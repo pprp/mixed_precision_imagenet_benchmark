@@ -1,0 +1,4 @@
+
+*.gz
+MNIST/*
+lightning_logs/*
