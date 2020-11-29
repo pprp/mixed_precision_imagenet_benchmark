@@ -59,7 +59,7 @@ class MixClassifier(pl.LightningModule):
         self.log("train_loss_batch", loss)
 
         # TODO 这种返回猜测应该是会输出到屏幕的内容，所以key的值可自定义
-        return loss #{"loss": loss, "y_pred": y_pred, "y_true": y}
+        return {"loss": loss, "y_pred": y_pred, "y_true": y}
 
     # def training_step_end(self, outputs):
     #     # 一个epoch结束
@@ -130,7 +130,7 @@ class MixClassifier(pl.LightningModule):
 
 def mix_main():
     pl.seed_everything(1234)
-    model = MixClassifier()
+    model = MixClassifier(batch_size=1024)
 
     trainer = pl.Trainer(max_epochs=100, check_val_every_n_epoch=10, precision=32,
                          weights_summary=None, progress_bar_refresh_rate=1,
@@ -140,7 +140,7 @@ def mix_main():
         model, min_lr=5e-5, max_lr=5e-2, mode='linear')
 
     fig = lr_finder.plot(suggest=True)
-    fig.show()
+    fig.savefig('./lr_finder.png')
 
     model.learning_rate = lr_finder.suggestion()
 
@@ -151,7 +151,8 @@ def mix_main():
     trainer.fit(model)
 
     # test
-    results = trainer.test(test_dataloaders=model.test_dataloader)
+
+    results = trainer.test(test_dataloaders=model.test_dataloader())
     print("Results:", results)
 
 
