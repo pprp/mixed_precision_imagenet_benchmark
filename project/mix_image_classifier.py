@@ -2,22 +2,26 @@
 # Author: pprp
 # Date: 2020-11-28
 
-import torch
-import pytorch_lightning as pl
+from mix_dataloader import get_train_dataloader, get_val_dataloader
+from torchvision.models import resnet18, resnet50
+from torchvision.datasets.mnist import MNIST
+from torchvision.datasets import ImageFolder
+from torchvision import transforms
+from torch.utils.data import DataLoader, random_split
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn import functional as F
 import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
+import torch
+import pytorch_lightning as pl
+import time
+import os
+import datetime
 
-from torchvision.datasets.mnist import MNIST
-from torchvision import transforms
-from torchvision.models import resnet50, resnet18
-from torchvision.datasets import ImageFolder
-
-from mix_dataloader import get_train_dataloader, get_val_dataloader
+os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 
 
 class MixClassifier(pl.LightningModule):
-    def __init__(self, learning_rate=1e-3, root_path="../data", batch_size=3):
+    def __init__(self, learning_rate=0.1, root_path="../data", batch_size=3):
         super(MixClassifier, self).__init__()
         # self.resnet50 = resnet50(pretrained=False)
         # self.resnet50.fc = nn.Linear(2048, 10)
@@ -43,7 +47,11 @@ class MixClassifier(pl.LightningModule):
 
     def configure_optimizers(self):
         # 修改优化器
-        return torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=self.learning_rate, weight_decay=1e-4, momentum=0.9)
+        scheduler = ReduceLROnPlateau(
+            optimizer, mode="min", patience=10, factor=0.1, verbose=False, threshold=0.0001, eps=1e-08)
+        return optimizer, scheduler
 
     def training_step(self, batch, batch_idx):
         # 每一个循环内部执行
@@ -61,6 +69,7 @@ class MixClassifier(pl.LightningModule):
         # Save metrics for current batch
         self.log("train_acc_batch", train_acc_batch)
         self.log("train_loss_batch", loss)
+        self.log("training_time", time.time())
 
         # TODO 这种返回猜测应该是会输出到屏幕的内容，所以key的值可自定义
         return {"loss": loss, "y_pred": y_pred, "y_true": y}
@@ -144,11 +153,12 @@ class MixClassifier(pl.LightningModule):
 
 def mix_main():
     pl.seed_everything(1234)
-    model = MixClassifier(batch_size=18, root_path="/media/niu/niu_d/data/imagenet")
+    model = MixClassifier(
+        batch_size=256, root_path="/media/niu/niu_d/data/imagenet")
 
     trainer = pl.Trainer(max_epochs=200, check_val_every_n_epoch=10, precision=32,
                          weights_summary=None, progress_bar_refresh_rate=1,
-                         auto_scale_batch_size='binsearch', gpus='2,3')
+                         auto_scale_batch_size='binsearch', gpus='0,1')
 
     # lr_finder = trainer.tuner.lr_find(
     #     model, min_lr=5e-5, max_lr=5e-2, mode='linear')
@@ -171,4 +181,8 @@ def mix_main():
 
 
 if __name__ == "__main__":
+    f = open("time_record.txt", "w")
+    print(time.asctime(time.localtime(time.time())), file=f)
     mix_main()
+    print(time.asctime(time.localtime(time.time())), file=f)
+    f.close()
