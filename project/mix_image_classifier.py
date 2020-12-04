@@ -17,18 +17,18 @@ from mix_dataloader import get_train_dataloader, get_val_dataloader
 
 
 class MixClassifier(pl.LightningModule):
-    def __init__(self, learning_rate=1e-3, batch_size=3, root_path = "../data"):
+    def __init__(self, learning_rate=1e-3, root_path="../data", batch_size=3):
         super(MixClassifier, self).__init__()
         # self.resnet50 = resnet50(pretrained=False)
         # self.resnet50.fc = nn.Linear(2048, 10)
         self.resnet18 = resnet18(pretrained=False)
-        self.resnet18.conv1 = nn.Conv2d(
-            1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.resnet18.fc = nn.Linear(512, 10)
+        # self.resnet18.conv1 = nn.Conv2d(
+        #     1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.resnet18.fc = nn.Linear(512, 1000)
 
         self.learning_rate = learning_rate
         self.batch_size = batch_size
-        self.root_path = root_path 
+        self.root_path = root_path
 
         self.save_hyperparameters()
 
@@ -43,7 +43,7 @@ class MixClassifier(pl.LightningModule):
 
     def configure_optimizers(self):
         # 修改优化器
-        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        return torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=1e-4)
 
     def training_step(self, batch, batch_idx):
         # 每一个循环内部执行
@@ -112,9 +112,9 @@ class MixClassifier(pl.LightningModule):
 
     # def setup(self, stage=None):
         # dataset = MNIST('', train=True, download=True,
-                        # transform=transforms.ToTensor())
+        # transform=transforms.ToTensor())
         # mnist_test = MNIST('', train=False, download=True,
-                        #    transform=transforms.ToTensor())
+        #    transform=transforms.ToTensor())
 
         # mnist_train, mnist_val = random_split(dataset, [55000, 5000])
 
@@ -122,39 +122,41 @@ class MixClassifier(pl.LightningModule):
         # self.mnist_val = mnist_val
         # self.mnist_test = mnist_test
 
-    def train_dataloader(self, root_path):
+    def train_dataloader(self):
         # return DataLoader(self.mnist_train, batch_size=self.batch_size)
         dataloader = get_train_dataloader(
-            root_path, batch_size=self.batch_size)
+            self.root_path, batch_size=self.batch_size)
         return dataloader
 
-    def val_dataloader(self, root_path):
+    def val_dataloader(self):
         # return DataLoader(self.mnist_val, batch_size=self.batch_size)
-        dataloader = get_val_dataloader(root_path, batch_size=self.batch_size)
+        dataloader = get_val_dataloader(
+            self.root_path, batch_size=self.batch_size)
         return dataloader
 
-    def test_dataloader(self, root_path):
+    def test_dataloader(self):
         # set same as valid
         # return DataLoader(self.mnist_test, batch_size=self.batch_size)
-        dataloader = get_val_dataloader(root_path, batch_size=self.batch_size)
+        dataloader = get_val_dataloader(
+            self.root_path, batch_size=self.batch_size)
         return dataloader
 
 
 def mix_main():
     pl.seed_everything(1234)
-    model = MixClassifier(batch_size=18)
+    model = MixClassifier(batch_size=18, root_path="/media/niu/niu_d/data/imagenet")
 
     trainer = pl.Trainer(max_epochs=200, check_val_every_n_epoch=10, precision=32,
                          weights_summary=None, progress_bar_refresh_rate=1,
-                         auto_scale_batch_size='binsearch', gpus=1)
+                         auto_scale_batch_size='binsearch', gpus='2,3')
 
-    lr_finder = trainer.tuner.lr_find(
-        model, min_lr=5e-5, max_lr=5e-2, mode='linear')
+    # lr_finder = trainer.tuner.lr_find(
+    #     model, min_lr=5e-5, max_lr=5e-2, mode='linear')
 
-    fig = lr_finder.plot(suggest=True)
-    fig.savefig('./lr_finder.png')
+    # fig = lr_finder.plot(suggest=True)
+    # fig.savefig('./lr_finder.png')
 
-    model.learning_rate = lr_finder.suggestion()
+    # model.learning_rate = lr_finder.suggestion()
 
     # find the largest optimal batch size
     # trainer.tune(model)
@@ -163,7 +165,7 @@ def mix_main():
     trainer.fit(model)
 
     # test
-    test_dataloader = model.test_dataloader("../data/valid")
+    test_dataloader = model.test_dataloader()
     results = trainer.test(test_dataloaders=test_dataloader)
     print("Results:", results)
 
