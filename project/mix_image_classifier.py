@@ -25,10 +25,10 @@ class MixClassifier(pl.LightningModule):
         super(MixClassifier, self).__init__()
         # self.resnet50 = resnet50(pretrained=False)
         # self.resnet50.fc = nn.Linear(2048, 10)
-        self.resnet18 = resnet18(pretrained=False)
+        self.resnet50 = resnet50(pretrained=False)
         # self.resnet18.conv1 = nn.Conv2d(
         #     1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.resnet18.fc = nn.Linear(512, 1000)
+        self.resnet50.fc = nn.Linear(2048, 1000)
 
         self.learning_rate = learning_rate
         self.batch_size = batch_size
@@ -43,15 +43,22 @@ class MixClassifier(pl.LightningModule):
 
     def forward(self, x):
         # return self.resnet50(x)
-        return self.resnet18(x)
+        return self.resnet50(x)
 
     def configure_optimizers(self):
         # 修改优化器
+        # optimizer = torch.optim.SGD(
+        #     self.parameters(), lr=self.learning_rate, weight_decay=1e-4, momentum=0.9)
+        # scheduler = ReduceLROnPlateau(
+        #     optimizer, mode="min", patience=10, factor=0.1, verbose=False, threshold=0.0001, eps=1e-08)
+        # return {
+        #     'optimizer': optimizer,
+        #     'lr_scheduler': scheduler,
+        #     'monitor': "loss"
+        # }
         optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.learning_rate, weight_decay=1e-4, momentum=0.9)
-        scheduler = ReduceLROnPlateau(
-            optimizer, mode="min", patience=10, factor=0.1, verbose=False, threshold=0.0001, eps=1e-08)
-        return optimizer, scheduler
+            self.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+        return optimizer
 
     def training_step(self, batch, batch_idx):
         # 每一个循环内部执行
@@ -119,17 +126,6 @@ class MixClassifier(pl.LightningModule):
         # 这个函数可以返回任何一个值
         return test_acc_batch
 
-    # def setup(self, stage=None):
-        # dataset = MNIST('', train=True, download=True,
-        # transform=transforms.ToTensor())
-        # mnist_test = MNIST('', train=False, download=True,
-        #    transform=transforms.ToTensor())
-
-        # mnist_train, mnist_val = random_split(dataset, [55000, 5000])
-
-        # self.mnist_train = mnist_train
-        # self.mnist_val = mnist_val
-        # self.mnist_test = mnist_test
 
     def train_dataloader(self):
         # return DataLoader(self.mnist_train, batch_size=self.batch_size)
@@ -154,9 +150,9 @@ class MixClassifier(pl.LightningModule):
 def mix_main():
     pl.seed_everything(1234)
     model = MixClassifier(
-        batch_size=256, root_path="/media/niu/niu_d/data/imagenet")
+        batch_size=64, root_path="/media/niu/niu_d/data/imagenet")
 
-    trainer = pl.Trainer(max_epochs=200, check_val_every_n_epoch=10, precision=32,
+    trainer = pl.Trainer(max_epochs=200, check_val_every_n_epoch=5, precision=32,
                          weights_summary=None, progress_bar_refresh_rate=1,
                          auto_scale_batch_size='binsearch', gpus='0,1')
 
