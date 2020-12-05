@@ -3,3 +3,4 @@
 MNIST/*
 lightning_logs/*
 .vscode/sftp.json
+*.pyc

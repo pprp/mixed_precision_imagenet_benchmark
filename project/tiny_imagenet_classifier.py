@@ -21,7 +21,7 @@ from torchvision.models import resnet18, resnet50
 
 from mix_dataloader import get_train_dataloader, get_val_dataloader
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 
 
 class MixClassifier(pl.LightningModule):
@@ -48,6 +48,7 @@ class MixClassifier(pl.LightningModule):
 
         # model
         self.resnet50 = resnet50(pretrained=pretrained)
+        self.resnet50.fc = nn.Linear(2048, 184)
 
         # Built-in API for metrics
         self.train_accuracy = pl.metrics.Accuracy()
@@ -166,7 +167,7 @@ def process_args():
     parent_parser = argparse.ArgumentParser()
     parent_parser = pl.Trainer.add_argparse_args(parent_parser)
     parent_parser.add_argument(
-        '--root_path', type=str, default="/media/niu/niu_d/data/imagenet", metavar="DIR", dest="root_path")
+        '--root_path', type=str, default="D:\imagenet_data", metavar="DIR", dest="root_path")
     parent_parser.add_argument('--seed', type=int, default=1234)
     parser = MixClassifier.add_model_specific_args(parent_parser)
     parser.set_defaults(
