@@ -11,6 +11,7 @@ from argparse import Namespace
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from pytorch_lightning.profiler import AdvancedProfiler
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
@@ -18,6 +19,7 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.datasets.mnist import MNIST
 from torchvision.models import resnet18, resnet50
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 from mix_dataloader import get_train_dataloader, get_val_dataloader
 
@@ -183,7 +185,7 @@ def process_args():
     parser.set_defaults(
         profile=True,
         deterministic=True,
-        max_epochs=20,
+        max_epochs=90,
     )
     args = parser.parse_args()
     return args
@@ -205,15 +207,26 @@ def mix_main(args: Namespace) -> None:
     ######################
     # model trainer
     ######################
+
     model = MixClassifier(**vars(args))
 
-    trainer = pl.Trainer(max_epochs=args.max_epochs, check_val_every_n_epoch=5,
-                         precision=32,
-                         weights_summary=None,
+    # profiler = AdvancedProfiler
+    checkpoint_callback = ModelCheckpoint(
+                                          #   save_best_only=False,
+                                          verbose=True,
+                                          monitor='val_loss',
+                                          mode='min',
+                                          filename='imagenet_184-{epoch:02d}-{val_loss}:.2f')
+
+    trainer = pl.Trainer(max_epochs=args.max_epochs,
+                         amp_level='01',
+                         amp_backend='apex',
                          progress_bar_refresh_rate=1,
-                         auto_scale_batch_size='binsearch',
+                         auto_scale_batch_size=True,
                          gpus='-1',
-                         deterministic=True)
+                         deterministic=True,
+                         profiler='advanced',
+                         checkpoint_callback=checkpoint_callback)
 
     # lr_finder = trainer.tuner.lr_find(
     #     model, min_lr=5e-5, max_lr=5e-2, mode='linear')
@@ -231,7 +244,9 @@ def mix_main(args: Namespace) -> None:
 
     # test
     test_dataloader = model.test_dataloader()
-    results = trainer.test(test_dataloaders=test_dataloader)
+    results = trainer.test(
+        model,
+        test_dataloaders=test_dataloader)
     print("Results:", results)
 
 
