@@ -113,8 +113,8 @@ class MixClassifier(pl.LightningModule):
         # Save metrics for current batch
         self.log("train_loss", loss_train, on_step=True,
                  on_epoch=True, logger=True)
-        self.log("train_acc1", acc1, on_step=True, on_epoch=True, logger=True)
-        self.log("train_acc5", acc5, on_step=True, on_epoch=True, logger=True)
+        self.log("train_acc1", acc1, on_step=True, on_epoch=True, logger=True, prog_bar=True)
+        self.log("train_acc5", acc5, on_step=True, on_epoch=True, logger=True, prog_bar=True)
 
         # TODO 这种返回猜测应该是会输出到屏幕的内容，所以key的值可自定义
         return loss_train
@@ -132,7 +132,7 @@ class MixClassifier(pl.LightningModule):
 
         self.log('val_loss', loss_valid, on_step=True, on_epoch=True)
         self.log('val_acc1', acc1, on_step=True, prog_bar=True, on_epoch=True)
-        self.log('val_acc5', acc5, on_step=True, on_epoch=True)
+        self.log('val_acc5', acc5, on_step=True, on_epoch=True, prog_bar=True)
 
     def test_step(self, *args, **kwargs):
         return self.validation_step(*args, **kwargs)
@@ -161,7 +161,7 @@ class MixClassifier(pl.LightningModule):
         parser.add_argument('-l', '--learning_rate', type=float,
                             default=0.001, dest="learning_rate")
         parser.add_argument('-b', '--batch_size', type=int,
-                            default=64, dest="batch_size")
+                            default=80, dest="batch_size")
         parser.add_argument('--momentum', default=0.9,
                             type=float, metavar='M', dest="momentum")
         parser.add_argument('--wd', '--weight_decay', default=1e-4,
@@ -226,7 +226,8 @@ def mix_main(args: Namespace) -> None:
                          gpus='-1',
                          deterministic=True,
                          profiler='advanced',
-                         checkpoint_callback=checkpoint_callback)
+                         checkpoint_callback=checkpoint_callback,
+                         accumulate_grad_batches=16)
 
     # lr_finder = trainer.tuner.lr_find(
     #     model, min_lr=5e-5, max_lr=5e-2, mode='linear')

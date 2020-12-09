@@ -20,7 +20,7 @@ or show all options you can change:
 
 import os
 
-# os.environ['CUDA_VISIBLE_DEVICES'] = "2,3"
+os.environ['CUDA_VISIBLE_DEVICES'] = "2,3"
 from argparse import ArgumentParser, Namespace
 
 import pytorch_lightning as pl
