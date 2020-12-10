@@ -161,7 +161,7 @@ class MixClassifier(pl.LightningModule):
         parser.add_argument('-l', '--learning_rate', type=float,
                             default=0.001, dest="learning_rate")
         parser.add_argument('-b', '--batch_size', type=int,
-                            default=80, dest="batch_size")
+                            default=64, dest="batch_size")
         parser.add_argument('--momentum', default=0.9,
                             type=float, metavar='M', dest="momentum")
         parser.add_argument('--wd', '--weight_decay', default=1e-4,
@@ -212,7 +212,7 @@ def mix_main(args: Namespace) -> None:
 
     # profiler = AdvancedProfiler
     checkpoint_callback = ModelCheckpoint(
-                                          #   save_best_only=False,
+                                          # save_best_only=False,
                                           verbose=True,
                                           monitor='val_loss',
                                           mode='min',
@@ -227,7 +227,7 @@ def mix_main(args: Namespace) -> None:
                          deterministic=True,
                          profiler='advanced',
                          checkpoint_callback=checkpoint_callback,
-                         accumulate_grad_batches=16)
+                         accumulate_grad_batches=4)
 
     # lr_finder = trainer.tuner.lr_find(
     #     model, min_lr=5e-5, max_lr=5e-2, mode='linear')

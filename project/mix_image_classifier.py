@@ -196,13 +196,13 @@ def mix_main(args: Namespace) -> None:
     ######################
     model = MixClassifier(**vars(args))
 
-    trainer = pl.Trainer(max_epochs=args.max_epochs, check_val_every_n_epoch=5,
-                         precision=32,
-                         weights_summary=None,
-                         progress_bar_refresh_rate=1,
-                         auto_scale_batch_size='binsearch',
+    trainer = pl.Trainer(max_epochs=args.max_epochs,
+                         amp_level="01",
+                         progress_bar_refresh_rate=5,
+                        #  auto_scale_batch_size='binsearch',
                          gpus='-1',
-                         deterministic=True)
+                         deterministic=True,
+                         accumulate_grad_batches=16)
 
     # lr_finder = trainer.tuner.lr_find(
     #     model, min_lr=5e-5, max_lr=5e-2, mode='linear')
