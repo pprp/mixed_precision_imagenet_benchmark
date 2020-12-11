@@ -19,11 +19,11 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.datasets.mnist import MNIST
 from torchvision.models import resnet18, resnet50
+from torchvision.models.resnet import Bottleneck, BasicBlock
 from pytorch_lightning.callbacks import ModelCheckpoint
-
+from utils.WarmUp import WarmUpLR
+from utils.LabelSmoothing import LSR
 from mix_dataloader import get_train_dataloader, get_val_dataloader
-
-# os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 
 
 class MixClassifier(pl.LightningModule):
@@ -51,6 +51,7 @@ class MixClassifier(pl.LightningModule):
         # model
         self.resnet50 = resnet50(pretrained=pretrained)
         self.resnet50.fc = nn.Linear(2048, 184)
+        self.lsr_loss = LSR()
 
         # Built-in API for metrics
         self.train_accuracy = pl.metrics.Accuracy()
@@ -60,12 +61,17 @@ class MixClassifier(pl.LightningModule):
         # init
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(
-                    m.weight, mode='fan_out', nonlinearity='relu')
-                # nn.init.xavier_normal_(m.weight)
+                nn.init.xavier_uniform_(m.weight)
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
+
+        if zero_init_residual:
+            for m in self.modules():
+                if isinstance(m, Bottleneck):
+                    nn.init.constant_(m.bn3.weight, 0)
+                elif isinstance(m, BasicBlock):
+                    nn.init.constant_(m.bn2.weight, 0)
 
     def forward(self, x):
         return self.resnet50(x)
@@ -105,7 +111,9 @@ class MixClassifier(pl.LightningModule):
         y_pred = self.forward(x_image)
 
         # loss calculation
-        loss_train = F.cross_entropy(y_pred, y_true)
+        # loss_train = F.cross_entropy(y_pred, y_true)
+        # label smoothing
+        loss_train = self.lsr_loss(y_pred, y_true)
 
         # train accuracy calculation
         acc1, acc5 = self.custom_accuracy(y_pred, y_true, topk=(1, 5))
@@ -113,8 +121,10 @@ class MixClassifier(pl.LightningModule):
         # Save metrics for current batch
         self.log("train_loss", loss_train, on_step=True,
                  on_epoch=True, logger=True)
-        self.log("train_acc1", acc1, on_step=True, on_epoch=True, logger=True, prog_bar=True)
-        self.log("train_acc5", acc5, on_step=True, on_epoch=True, logger=True, prog_bar=True)
+        self.log("train_acc1", acc1, on_step=True,
+                 on_epoch=True, logger=True, prog_bar=True)
+        self.log("train_acc5", acc5, on_step=True,
+                 on_epoch=True, logger=True, prog_bar=True)
 
         # TODO 这种返回猜测应该是会输出到屏幕的内容，所以key的值可自定义
         return loss_train
@@ -125,7 +135,9 @@ class MixClassifier(pl.LightningModule):
         y_pred = self.forward(x_image)
 
         # compute loss
-        loss_valid = F.cross_entropy(y_pred, y_true)
+        # loss_valid = F.cross_entropy(y_pred, y_true)
+        # label smoothing
+        loss_valid = self.lsr_loss(y_pred, y_true)
 
         # compute accuracy
         acc1, acc5 = self.custom_accuracy(y_pred, y_true, topk=(1, 5))
@@ -212,11 +224,11 @@ def mix_main(args: Namespace) -> None:
 
     # profiler = AdvancedProfiler
     checkpoint_callback = ModelCheckpoint(
-                                          # save_best_only=False,
-                                          verbose=True,
-                                          monitor='val_loss',
-                                          mode='min',
-                                          filename='imagenet_184-{epoch:02d}-{val_loss}:.2f')
+        # save_best_only=False,
+        verbose=True,
+        monitor='val_loss',
+        mode='min',
+        filename='imagenet_184-{epoch:02d}-{val_loss}:.2f')
 
     trainer = pl.Trainer(max_epochs=args.max_epochs,
                          amp_level='01',
