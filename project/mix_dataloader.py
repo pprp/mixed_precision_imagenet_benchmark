@@ -1,16 +1,17 @@
 # coding:utf-8
 # https://github.com/FlyEgle/cub_baseline/blob/355cc311b6/dataset/imagenet_dataset.py
 # https://www.kaggle.com/solomonk/pytorch-simplenet-augmentation-cnn-lb-0-945
+# https://github.com/bearpelican/Experiments/blob/bcf10ef0dbaf56cc5f6202f504a80f8b1004c990/rectangular_images/validation_utils.py
 import os
+from typing import Any
 
 import torch
 import torchvision
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset, Sampler
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader, Dataset, Sampler
 from torchvision.datasets.folder import accimage_loader
-from typing import Any
-from PIL import Image
 
 BASE_RESIZE_SIZE = 512
 RESIZE_SIZE = 224
@@ -370,6 +371,52 @@ class ColorJitter(RandomOrder):
         if saturation != 0:
             self.transforms.append(Saturation(saturation))
 
+# from fastai solution 
+# not avaliable now
+class RectangularCropTfm(object):
+    def __init__(self, idx2ar, target_size):
+        self.idx2ar, self.target_size = idx2ar, target_size
+
+    def __call__(self, img, idx):
+        target_ar = self.idx2ar[idx]
+        if target_ar < 1:
+            w = int(self.target_size/target_ar)
+            size = (w//8*8, self.target_size)
+        else:
+            h = int(self.target_size*target_ar)
+            size = (self.target_size, h//8*8)
+        return transforms.functional.center_crop(img, size)
+
+# Step 1: sort images by aspect ratio
+def sort_ar(data, valdir):
+    idx2ar_file = data/'sorted_idxar.p'
+    if os.path.isfile(idx2ar_file): return pickle.load(open(idx2ar_file, 'rb'))
+    print('Creating AR indexes. Please be patient this may take a couple minutes...')
+    val_dataset = datasets.ImageFolder(valdir)
+    sizes = [img[0].size for img in tqdm(val_dataset, total=len(val_dataset))]
+    idx_ar = [(i, round(s[0]/s[1], 5)) for i,s in enumerate(sizes)]
+    sorted_idxar = sorted(idx_ar, key=lambda x: x[1])
+    pickle.dump(sorted_idxar, open(idx2ar_file, 'wb'))
+    return sorted_idxar
+
+# Step 2: chunk images by batch size. This way we can crop each image to the batch aspect ratio mean 
+def chunks(l, n):
+    n = max(1, n)
+    return (l[i:i+n] for i in range(0, len(l), n))
+
+# Step 3: map image index to batch aspect ratio mean so our transform function knows where to crop
+def map_idx2ar(idx_ar_sorted, batch_size):
+    ar_chunks = list(chunks(idx_ar_sorted, batch_size))
+    idx2ar = {}
+    ar_means = []
+    for chunk in ar_chunks:
+        idxs, ars = list(zip(*chunk))
+        mean = round(np.mean(ars), 5)
+        ar_means.append(mean)
+        for idx in idxs:
+            idx2ar[idx] = mean
+    return idx2ar, ar_means
+
 
 class RandomFlip(object):
     """Randomly flips the given PIL.Image with a probability of 0.25 horizontal,
@@ -471,7 +518,8 @@ class PowerPIL(RandomOrder):
 
 
 if __name__ == "__main__":
-    dataloader = get_mix_val_dataloader(
-        root_path=r"D:\GitHub\SimpleCVReproduction\fine_grained_baseline\data\images", batch_size=4, workers=1)
-    for item in dataloader:
-        print(item)
+    # dataloader = get_mix_val_dataloader(
+    #     root_path=r"D:\GitHub\SimpleCVReproduction\fine_grained_baseline\data\images", batch_size=4, workers=1)
+    # for item in dataloader:
+    #     print(item)
+    # RectangularCropTfm()
