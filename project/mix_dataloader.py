@@ -9,11 +9,13 @@ import random
 from typing import Any
 
 import cv2
+import PIL
 import PIL.Image as im
 import PIL.ImageEnhance as ie
 import torch
 import torchvision
 import tqdm
+import numpy as np
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, Sampler
 from torchvision import transforms
@@ -89,11 +91,13 @@ class RandomResizedCrop:
         self.ratio = ratio
 
     def __call__(self, img):
+        img = cv2.cvtColor(np.asarray(img),
+                           cv2.COLOR_RGB2BGR)
         h, w, _ = img.shape
 
         area = w * h
 
-        for attempt in range(10):
+        for _ in range(10):
             target_area = random.uniform(*self.scale) * area
             target_ratio = random.uniform(*self.ratio)
 
@@ -119,6 +123,9 @@ class RandomResizedCrop:
 
         resized = cv2.resize(cropped, self.size,
                              interpolation=self.interpolation)
+
+        # from cv2 to PIL
+        resized = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
 
         return resized
 
