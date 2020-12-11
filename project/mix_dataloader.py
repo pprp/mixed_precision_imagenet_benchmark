@@ -21,6 +21,18 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.datasets.folder import accimage_loader
+from cvtransforms import *
+
+'''
+_all__ = ["Compose", "ToTensor", "ToCVImage",
+           "Normalize", "Resize", "CenterCrop", "Pad",
+           "Lambda", "RandomApply", "RandomOrder", "RandomChoice", "RandomCrop",
+           "RandomHorizontalFlip", "RandomVerticalFlip", "RandomResizedCrop",
+           "FiveCrop", "TenCrop", "LinearTransformation", "ColorJitter",
+           "RandomRotation", "RandomAffine", "RandomAffine6", "RandomPerspective",
+           "Grayscale", "RandomGrayscale",
+           "RandomGaussianNoise", "RandomPoissonNoise", "RandomSPNoise"]
+'''
 
 BASE_RESIZE_SIZE = 512
 RESIZE_SIZE = 224
@@ -91,8 +103,8 @@ class RandomResizedCrop:
         self.ratio = ratio
 
     def __call__(self, img):
-        img = cv2.cvtColor(np.asarray(img),
-                           cv2.COLOR_RGB2BGR)
+        # img = cv2.cvtColor(np.asarray(img),
+        #                    cv2.COLOR_RGB2BGR)
         h, w, _ = img.shape
 
         area = w * h
@@ -125,7 +137,7 @@ class RandomResizedCrop:
                              interpolation=self.interpolation)
 
         # from cv2 to PIL
-        resized = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
+        # resized = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
 
         return resized
 
@@ -146,11 +158,11 @@ class RandomResizedCrop:
 
 
 def get_train_dataloader(root_path: str, batch_size: int, workers: int):
-    train_trans = transforms.Compose([
-        transforms.RandomResizedCrop(224),  # 随机裁剪224
-        transforms.RandomHorizontalFlip(),  # 水平翻转
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    train_trans = Compose([
+        RandomResizedCrop(224),  # 随机裁剪224
+        RandomHorizontalFlip(),  # 水平翻转
+        ToTensor(),
+        Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
     train_datasets = ImageFolder(os.path.join(
@@ -160,19 +172,19 @@ def get_train_dataloader(root_path: str, batch_size: int, workers: int):
 
 
 def get_mix_train_dataloader(root_path, batch_size, workers):
-    train_trans = transforms.Compose([
+    train_trans = Compose([
         # transforms.RandomResizedCrop(self.INPUT_SIZE, scale=(0.2, 1.)),
         # transforms.Resize((self.BASE_RESIZE_SIZE, self.BASE_RESIZE_SIZE), Image.BILINEAR),
         # transforms.RandomCrop(INPUT_SIZE),
         RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(0.5),
-        transforms.RandomRotation(degrees=15),
-        transforms.ColorJitter(
+        RandomHorizontalFlip(0.5),
+        RandomRotation(degrees=15),
+        ColorJitter(
             brightness=BRIGHTNESS, contrast=CONTRAST, hue=HUE, saturation=SATURATION),
-        transforms.ToTensor(),
+        ToTensor(),
         Lighting(0.1, __imagenet_pca['eigval'], __imagenet_pca['eigvec']),
-        transforms.Normalize([0.485, 0.456, 0.406],
-                             [0.229, 0.224, 0.225])
+        Normalize([0.485, 0.456, 0.406],
+                  [0.229, 0.224, 0.225])
     ])
     train_datasets = ImageFolder(os.path.join(
         root_path, "train"), transform=train_trans, loader=mix_pil_loader)
@@ -181,11 +193,11 @@ def get_mix_train_dataloader(root_path, batch_size, workers):
 
 
 def get_val_dataloader(root_path: str, batch_size: int, workers: int):
-    val_trans = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    val_trans = Compose([
+        Resize(256),
+        CenterCrop(224),
+        ToTensor(),
+        Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
     valid_datasets = ImageFolder(os.path.join(
@@ -195,13 +207,13 @@ def get_val_dataloader(root_path: str, batch_size: int, workers: int):
 
 
 def get_mix_val_dataloader(root_path, batch_size, workers):
-    val_trans = transforms.Compose([
-        transforms.Resize(
+    val_trans = Compose([
+        Resize(
             (448, 448)),
-        transforms.CenterCrop(
+        CenterCrop(
             (224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ToTensor(),
+        Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
     val_datasets = ImageFolder(os.path.join(
