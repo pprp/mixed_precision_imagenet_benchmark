@@ -47,6 +47,7 @@ class MixClassifier(pl.LightningModule):
         self.momentum = momentum
         self.weight_decay = weight_decay
         self.workers = workers
+        self.zero_init_residual = True
 
         # model
         self.resnet50 = resnet50(pretrained=pretrained)
@@ -66,7 +67,7 @@ class MixClassifier(pl.LightningModule):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-        if zero_init_residual:
+        if self.zero_init_residual:
             for m in self.modules():
                 if isinstance(m, Bottleneck):
                     nn.init.constant_(m.bn3.weight, 0)
@@ -171,7 +172,7 @@ class MixClassifier(pl.LightningModule):
         parser.add_argument('-j', '--workers', default=4,
                             type=int, metavar="N")
         parser.add_argument('-l', '--learning_rate', type=float,
-                            default=0.001, dest="learning_rate")
+                            default=0.1, dest="learning_rate")
         parser.add_argument('-b', '--batch_size', type=int,
                             default=64, dest="batch_size")
         parser.add_argument('--momentum', default=0.9,
@@ -191,7 +192,7 @@ def process_args():
     parent_parser = argparse.ArgumentParser()
     parent_parser = pl.Trainer.add_argparse_args(parent_parser)
     parent_parser.add_argument(
-        '--root_path', type=str, default="D:\imagenet_data", metavar="DIR", dest="root_path")
+        '--root_path', type=str, default="E:\imagenet_data", metavar="DIR", dest="root_path")
     parent_parser.add_argument('--seed', type=int, default=1234)
     parser = MixClassifier.add_model_specific_args(parent_parser)
     parser.set_defaults(

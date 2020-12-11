@@ -2,11 +2,18 @@
 # https://github.com/FlyEgle/cub_baseline/blob/355cc311b6/dataset/imagenet_dataset.py
 # https://www.kaggle.com/solomonk/pytorch-simplenet-augmentation-cnn-lb-0-945
 # https://github.com/bearpelican/Experiments/blob/bcf10ef0dbaf56cc5f6202f504a80f8b1004c990/rectangular_images/validation_utils.py
+import math
 import os
+import pickle
+import random
 from typing import Any
 
+import cv2
+import PIL.Image as im
+import PIL.ImageEnhance as ie
 import torch
 import torchvision
+import tqdm
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, Sampler
 from torchvision import transforms
@@ -371,8 +378,10 @@ class ColorJitter(RandomOrder):
         if saturation != 0:
             self.transforms.append(Saturation(saturation))
 
-# from fastai solution 
+# from fastai solution
 # not avaliable now
+
+
 class RectangularCropTfm(object):
     def __init__(self, idx2ar, target_size):
         self.idx2ar, self.target_size = idx2ar, target_size
@@ -388,23 +397,30 @@ class RectangularCropTfm(object):
         return transforms.functional.center_crop(img, size)
 
 # Step 1: sort images by aspect ratio
+
+
 def sort_ar(data, valdir):
     idx2ar_file = data/'sorted_idxar.p'
-    if os.path.isfile(idx2ar_file): return pickle.load(open(idx2ar_file, 'rb'))
+    if os.path.isfile(idx2ar_file):
+        return pickle.load(open(idx2ar_file, 'rb'))
     print('Creating AR indexes. Please be patient this may take a couple minutes...')
-    val_dataset = datasets.ImageFolder(valdir)
+    val_dataset = torchvision.datasets.ImageFolder(valdir)
     sizes = [img[0].size for img in tqdm(val_dataset, total=len(val_dataset))]
-    idx_ar = [(i, round(s[0]/s[1], 5)) for i,s in enumerate(sizes)]
+    idx_ar = [(i, round(s[0]/s[1], 5)) for i, s in enumerate(sizes)]
     sorted_idxar = sorted(idx_ar, key=lambda x: x[1])
     pickle.dump(sorted_idxar, open(idx2ar_file, 'wb'))
     return sorted_idxar
 
-# Step 2: chunk images by batch size. This way we can crop each image to the batch aspect ratio mean 
+# Step 2: chunk images by batch size. This way we can crop each image to the batch aspect ratio mean
+
+
 def chunks(l, n):
     n = max(1, n)
     return (l[i:i+n] for i in range(0, len(l), n))
 
 # Step 3: map image index to batch aspect ratio mean so our transform function knows where to crop
+
+
 def map_idx2ar(idx_ar_sorted, batch_size):
     ar_chunks = list(chunks(idx_ar_sorted, batch_size))
     idx2ar = {}
@@ -523,3 +539,4 @@ if __name__ == "__main__":
     # for item in dataloader:
     #     print(item)
     # RectangularCropTfm()
+    pass
