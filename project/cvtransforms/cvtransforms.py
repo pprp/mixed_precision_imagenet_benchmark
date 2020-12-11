@@ -8,7 +8,7 @@ import numbers
 import types
 import collections
 
-from cvtorchvision.cvtransforms import cvfunctional as F
+from cvtransforms import cvfunctional as F
 
 
 __all__ = ["Compose", "ToTensor", "ToCVImage",

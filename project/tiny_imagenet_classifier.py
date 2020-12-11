@@ -196,7 +196,7 @@ def process_args():
     parent_parser = argparse.ArgumentParser()
     parent_parser = pl.Trainer.add_argparse_args(parent_parser)
     parent_parser.add_argument(
-        '--root_path', type=str, default="E:\imagenet_data", metavar="DIR", dest="root_path")
+        '--root_path', type=str, default="D:\imagenet_data", metavar="DIR", dest="root_path")
     parent_parser.add_argument('--seed', type=int, default=1234)
     parser = MixClassifier.add_model_specific_args(parent_parser)
     parser.set_defaults(

@@ -9,19 +9,21 @@ import random
 from typing import Any
 
 import cv2
-import PIL
-import PIL.Image as im
-import PIL.ImageEnhance as ie
+import numpy as np
+# import PIL
+# import PIL.Image as im
+# import PIL.ImageEnhance as ie
 import torch
 import torchvision
 import tqdm
-import numpy as np
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, Sampler
-from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.datasets.folder import accimage_loader
-from cvtransforms import *
+
+from cvtransforms import (CenterCrop, ColorJitter, Compose, Normalize,
+                          RandomHorizontalFlip, RandomResizedCrop,
+                          RandomRotation, Resize, ToCVImage, ToTensor)
 
 '''
 _all__ = ["Compose", "ToTensor", "ToCVImage",
@@ -76,89 +78,9 @@ class Lighting(object):
         return img.add(rgb.view(3, 1, 1).expand_as(img))
 
 
-class RandomResizedCrop:
-    """Randomly crop a rectangle region whose aspect ratio is randomly sampled 
-    in [3/4, 4/3] and area randomly sampled in [8%, 100%], then resize the cropped
-    region into a 224-by-224 square image.
-    Args:
-        size: expected output size of each edge
-        scale: range of size of the origin size cropped
-        ratio: range of aspect ratio of the origin aspect ratio cropped (w / h)
-        interpolation: Default: cv2.INTER_LINEAR: 
-    """
-
-    def __init__(self, size, scale=(0.08, 1.0), ratio=(3.0 / 4.0, 4.0 / 3.0), interpolation='linear'):
-
-        self.methods = {
-            "area": cv2.INTER_AREA,
-            "nearest": cv2.INTER_NEAREST,
-            "linear": cv2.INTER_LINEAR,
-            "cubic": cv2.INTER_CUBIC,
-            "lanczos4": cv2.INTER_LANCZOS4
-        }
-
-        self.size = (size, size)
-        self.interpolation = self.methods[interpolation]
-        self.scale = scale
-        self.ratio = ratio
-
-    def __call__(self, img):
-        # img = cv2.cvtColor(np.asarray(img),
-        #                    cv2.COLOR_RGB2BGR)
-        h, w, _ = img.shape
-
-        area = w * h
-
-        for _ in range(10):
-            target_area = random.uniform(*self.scale) * area
-            target_ratio = random.uniform(*self.ratio)
-
-            output_h = int(round(math.sqrt(target_area * target_ratio)))
-            output_w = int(round(math.sqrt(target_area / target_ratio)))
-
-            if random.random() < 0.5:
-                output_w, output_h = output_h, output_w
-
-            if output_w <= w and output_h <= h:
-                topleft_x = random.randint(0, w - output_w)
-                topleft_y = random.randint(0, h - output_h)
-                break
-
-        if output_w > w or output_h > h:
-            output_w = min(w, h)
-            output_h = output_w
-            topleft_x = random.randint(0, w - output_w)
-            topleft_y = random.randint(0, h - output_w)
-
-        cropped = img[topleft_y: topleft_y +
-                      output_h, topleft_x: topleft_x + output_w]
-
-        resized = cv2.resize(cropped, self.size,
-                             interpolation=self.interpolation)
-
-        # from cv2 to PIL
-        # resized = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
-
-        return resized
-
-    def __repr__(self):
-        for name, inter in self.methods.items():
-            if inter == self.interpolation:
-                inter_name = name
-
-        interpolate_str = inter_name
-        format_str = self.__class__.__name__ + '(size={0}'.format(self.size)
-        format_str += ', scale={0}'.format(tuple(round(s, 4)
-                                                 for s in self.scale))
-        format_str += ', ratio={0}'.format(tuple(round(r, 4)
-                                                 for r in self.ratio))
-        format_str += ', interpolation={0})'.format(interpolate_str)
-
-        return format_str
-
-
 def get_train_dataloader(root_path: str, batch_size: int, workers: int):
     train_trans = Compose([
+        ToCVImage(),
         RandomResizedCrop(224),  # 随机裁剪224
         RandomHorizontalFlip(),  # 水平翻转
         ToTensor(),
@@ -187,13 +109,14 @@ def get_mix_train_dataloader(root_path, batch_size, workers):
                   [0.229, 0.224, 0.225])
     ])
     train_datasets = ImageFolder(os.path.join(
-        root_path, "train"), transform=train_trans, loader=mix_pil_loader)
+        root_path, "train"), transform=train_trans, loader=mix_loader)
     # 内存充足的情况下，可以pin_memory,可以加速
     return DataLoader(train_datasets, batch_size=batch_size, shuffle=True, num_workers=workers, pin_memory=True)
 
 
 def get_val_dataloader(root_path: str, batch_size: int, workers: int):
     val_trans = Compose([
+        ToCVImage(),
         Resize(256),
         CenterCrop(224),
         ToTensor(),
@@ -217,7 +140,7 @@ def get_mix_val_dataloader(root_path, batch_size, workers):
     ])
 
     val_datasets = ImageFolder(os.path.join(
-        root_path, "val"), transform=val_trans)
+        root_path, "val"), transform=val_trans, loader=mix_loader)
     # 内存充足的情况下，可以pin_memory,可以加速
     return DataLoader(val_datasets, batch_size=batch_size, shuffle=False, num_workers=workers, pin_memory=True)
 
@@ -227,25 +150,29 @@ def mix_loader(path: str) -> Any:
     if get_image_backend() == 'accimage':
         return accimage_loader(path)
     else:
-        return mix_pil_loader(path)
+        return mix_cv_loader(path)
 
 
 def resize_img(image, resize_size):
     # from 蒋神
-    w, h = image.size
+    # w, h = image.size # PIL
+    h, w, _ = image.shape
     scale = resize_size / float(min(h, w))
     resize_h, resize_w = int(h * scale), int(w * scale)
-    image = image.resize((resize_w, resize_h), Image.BILINEAR)
+
+    # image = image.resize((resize_w, resize_h), Image.BILINEAR) # PIL
+    image = cv2.resize(image, (resize_w, resize_h),
+                       interpolation=cv2.INTER_LINEAR)
     return image
 
 
-def mix_pil_loader(path: str) -> Image.Image:
-    # open path as file to avoid ResourceWarning (https://github.com/python-pillow/Pillow/issues/835)
-    with open(path, 'rb') as f:
-        img = Image.open(f)
-        img = resize_img(img, resize_size=BASE_RESIZE_SIZE)
+def mix_cv_loader(path: str):
+    # with open(path, 'rb') as f:
+    # img = Image.open(f)
+    img = cv2.imread(path)
+    img = resize_img(img, resize_size=BASE_RESIZE_SIZE)
 
-        return img.convert('RGB')
+    return img
 
 
 class RandomErasing(object):
@@ -387,16 +314,6 @@ class RandomOrder(object):
         return img
 
 
-class ColorJitter(RandomOrder):
-    def __init__(self, brightness=0.4, contrast=0.4, saturation=0.4):
-        self.transforms = []
-        if brightness != 0:
-            self.transforms.append(Brightness(brightness))
-        if contrast != 0:
-            self.transforms.append(Contrast(contrast))
-        if saturation != 0:
-            self.transforms.append(Saturation(saturation))
-
 # from fastai solution
 # not avaliable now
 
@@ -418,39 +335,39 @@ class RectangularCropTfm(object):
 # Step 1: sort images by aspect ratio
 
 
-def sort_ar(data, valdir):
-    idx2ar_file = data/'sorted_idxar.p'
-    if os.path.isfile(idx2ar_file):
-        return pickle.load(open(idx2ar_file, 'rb'))
-    print('Creating AR indexes. Please be patient this may take a couple minutes...')
-    val_dataset = torchvision.datasets.ImageFolder(valdir)
-    sizes = [img[0].size for img in tqdm(val_dataset, total=len(val_dataset))]
-    idx_ar = [(i, round(s[0]/s[1], 5)) for i, s in enumerate(sizes)]
-    sorted_idxar = sorted(idx_ar, key=lambda x: x[1])
-    pickle.dump(sorted_idxar, open(idx2ar_file, 'wb'))
-    return sorted_idxar
+# def sort_ar(data, valdir):
+#     idx2ar_file = data/'sorted_idxar.p'
+#     if os.path.isfile(idx2ar_file):
+#         return pickle.load(open(idx2ar_file, 'rb'))
+#     print('Creating AR indexes. Please be patient this may take a couple minutes...')
+#     val_dataset = torchvision.datasets.ImageFolder(valdir)
+#     sizes = [img[0].size for img in tqdm(val_dataset, total=len(val_dataset))]
+#     idx_ar = [(i, round(s[0]/s[1], 5)) for i, s in enumerate(sizes)]
+#     sorted_idxar = sorted(idx_ar, key=lambda x: x[1])
+#     pickle.dump(sorted_idxar, open(idx2ar_file, 'wb'))
+#     return sorted_idxar
 
 # Step 2: chunk images by batch size. This way we can crop each image to the batch aspect ratio mean
 
 
-def chunks(l, n):
-    n = max(1, n)
-    return (l[i:i+n] for i in range(0, len(l), n))
+# def chunks(l, n):
+#     n = max(1, n)
+#     return (l[i:i+n] for i in range(0, len(l), n))
 
 # Step 3: map image index to batch aspect ratio mean so our transform function knows where to crop
 
 
-def map_idx2ar(idx_ar_sorted, batch_size):
-    ar_chunks = list(chunks(idx_ar_sorted, batch_size))
-    idx2ar = {}
-    ar_means = []
-    for chunk in ar_chunks:
-        idxs, ars = list(zip(*chunk))
-        mean = round(np.mean(ars), 5)
-        ar_means.append(mean)
-        for idx in idxs:
-            idx2ar[idx] = mean
-    return idx2ar, ar_means
+# def map_idx2ar(idx_ar_sorted, batch_size):
+#     ar_chunks = list(chunks(idx_ar_sorted, batch_size))
+#     idx2ar = {}
+#     ar_means = []
+#     for chunk in ar_chunks:
+#         idxs, ars = list(zip(*chunk))
+#         mean = round(np.mean(ars), 5)
+#         ar_means.append(mean)
+#         for idx in idxs:
+#             idx2ar[idx] = mean
+#     return idx2ar, ar_means
 
 
 class RandomFlip(object):
