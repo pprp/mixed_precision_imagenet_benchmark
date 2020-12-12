@@ -9,6 +9,7 @@ import random
 from typing import Any
 
 import cv2
+import jpeg4py as jpeg 
 import numpy as np
 import torch
 import torchvision
@@ -119,8 +120,13 @@ def resize_img(image, resize_size):
 def mix_cv_loader(path: str):
     # with open(path, 'rb') as f:
     # img = Image.open(f)
-    img = cv2.imread(path)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    
+    
+    # using jpeg4py to accelerate    
+    # img = cv2.imread(path)
+    img = jpeg.JPEG(path).decode() #默认出来的就是RGB所以不用再转化了
+
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = resize_img(img, resize_size=BASE_RESIZE_SIZE)
     return img
 
