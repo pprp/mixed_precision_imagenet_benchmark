@@ -9,7 +9,7 @@ import random
 from typing import Any
 
 import cv2
-import jpeg4py as jpeg 
+import jpeg4py as jpeg
 import numpy as np
 import torch
 import torchvision
@@ -19,9 +19,13 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 from torchvision.datasets import ImageFolder
 from torchvision.datasets.folder import accimage_loader
 
-from cvtransforms import (CenterCrop, ColorJitter, Compose, Normalize,
-                          RandomHorizontalFlip, RandomResizedCrop,
-                          RandomRotation, Resize, ToCVImage, ToTensor)
+# from cvtransforms import (CenterCrop, ColorJitter, Compose, Normalize,
+#                           RandomHorizontalFlip, RandomResizedCrop,
+#                           RandomRotation, Resize, ToCVImage, ToTensor)
+
+# another library named albumentation
+import albumentations as A
+
 
 BASE_RESIZE_SIZE = 512
 RESIZE_SIZE = 224
@@ -64,30 +68,32 @@ class Lighting(object):
 
         return img.add(rgb.view(3, 1, 1).expand_as(img))
 
+
 def get_mix_train_dataloader(root_path, batch_size, workers):
-    train_trans = Compose([
-        RandomResizedCrop(224),
-        RandomHorizontalFlip(0.5),
-        RandomRotation(degrees=15),
-        ColorJitter(
+    train_trans = A.Compose([
+        A.RandomResizedCrop(224),
+        A.RandomHorizontalFlip(0.5),
+        A.RandomRotation(degrees=15),
+        A.ColorJitter(
             brightness=BRIGHTNESS, contrast=CONTRAST, hue=HUE, saturation=SATURATION),
-        ToTensor(),
+        A.ToTensor(),
         Lighting(0.1, __imagenet_pca['eigval'], __imagenet_pca['eigvec']),
-        Normalize([0.485, 0.456, 0.406],
-                  [0.229, 0.224, 0.225])
+        A.Normalize([0.485, 0.456, 0.406],
+                    [0.229, 0.224, 0.225])
     ])
     train_datasets = ImageFolder(os.path.join(
         root_path, "train"), transform=train_trans, loader=mix_loader)
     # 内存充足的情况下，可以pin_memory,可以加速
     return DataLoader(train_datasets, batch_size=batch_size, shuffle=True, num_workers=workers, pin_memory=True)
 
+
 def get_mix_val_dataloader(root_path, batch_size, workers):
-    val_trans = Compose([
-        Resize((448, 448)),
-        CenterCrop(
+    val_trans = A.Compose([
+        A.Resize((448, 448)),
+        A.CenterCrop(
             (224, 224)),
-        ToTensor(),
-        Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        A.ToTensor(),
+        A.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
     val_datasets = ImageFolder(os.path.join(
@@ -120,13 +126,11 @@ def resize_img(image, resize_size):
 def mix_cv_loader(path: str):
     # with open(path, 'rb') as f:
     # img = Image.open(f)
-    
-    
-    # using jpeg4py to accelerate    
+
+    # using jpeg4py to accelerate
     # img = cv2.imread(path)
-    img = jpeg.JPEG(path).decode() #默认出来的就是RGB所以不用再转化了
+    img = jpeg.JPEG(path).decode()  # 默认出来的就是RGB所以不用再转化了
 
     # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     img = resize_img(img, resize_size=BASE_RESIZE_SIZE)
     return img
-
