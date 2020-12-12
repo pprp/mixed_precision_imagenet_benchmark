@@ -23,7 +23,9 @@ from torchvision.models.resnet import Bottleneck, BasicBlock
 from pytorch_lightning.callbacks import ModelCheckpoint
 from utils.WarmUp import WarmUpLR
 from utils.LabelSmoothing import LSR
-from mix_dataloader import get_train_dataloader, get_val_dataloader, get_mix_train_dataloader, get_mix_val_dataloader
+from mix_pil_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
+# from mix_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
+
 
 
 class MixClassifier(pl.LightningModule):
