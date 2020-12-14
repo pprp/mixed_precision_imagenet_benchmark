@@ -167,7 +167,7 @@ class MixClassifier(pl.LightningModule):
         return dataloader
 
     def test_dataloader(self):
-        dataloader = get_val_dataloader(
+        dataloader = get_mix_val_dataloader(
             self.root_path, batch_size=self.batch_size, workers=self.workers)
         return dataloader
 
