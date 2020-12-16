@@ -145,9 +145,9 @@ class MixClassifier(pl.LightningModule):
         # compute accuracy
         acc1, acc5 = self.custom_accuracy(y_pred, y_true, topk=(1, 5))
 
-        self.log('val_loss', loss_valid, on_step=True, on_epoch=True)
-        self.log('val_acc1', acc1, on_step=True, prog_bar=True, on_epoch=True)
-        self.log('val_acc5', acc5, on_step=True, on_epoch=True, prog_bar=True)
+        self.log('val_loss', loss_valid, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_acc1', acc1, on_step=True, prog_bar=True, on_epoch=True, logger=True)
+        self.log('val_acc5', acc5, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
     def test_step(self, *args, **kwargs):
         return self.validation_step(*args, **kwargs)
@@ -235,11 +235,11 @@ def mix_main(args: Namespace) -> None:
         verbose=True,
         monitor='val_loss',
         mode='min',
-        filename='imagenet_184-{epoch:02d}-{val_loss}:.2f')
+        filename='imagenet_184-{epoch:02d}-{val_loss:.2f}')
 
     trainer = pl.Trainer(max_epochs=args.max_epochs,
-                         amp_level='01',
-                         amp_backend='apex',
+                        #  amp_level='01',
+                        #  amp_backend='apex',
                          progress_bar_refresh_rate=1,
                          auto_scale_batch_size=True,
                          gpus='-1',

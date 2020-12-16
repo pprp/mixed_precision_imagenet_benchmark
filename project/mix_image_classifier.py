@@ -11,6 +11,7 @@ from argparse import Namespace
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from pytorch_lightning.profiler import AdvancedProfiler
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
@@ -18,10 +19,13 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torchvision.datasets.mnist import MNIST
 from torchvision.models import resnet18, resnet50
+from torchvision.models.resnet import Bottleneck, BasicBlock
+from pytorch_lightning.callbacks import ModelCheckpoint
+from utils.WarmUp import WarmUpLR
+from utils.LabelSmoothing import LSR
+from mix_pil_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
+# from mix_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
 
-from mix_dataloader import get_train_dataloader, get_val_dataloader
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 
 
 class MixClassifier(pl.LightningModule):
@@ -45,14 +49,31 @@ class MixClassifier(pl.LightningModule):
         self.momentum = momentum
         self.weight_decay = weight_decay
         self.workers = workers
+        self.zero_init_residual = True
 
         # model
         self.resnet50 = resnet50(pretrained=pretrained)
+        self.lsr_loss = LSR()
 
         # Built-in API for metrics
         self.train_accuracy = pl.metrics.Accuracy()
         self.val_accuracy = pl.metrics.Accuracy()
         self.test_accuracy = pl.metrics.Accuracy()
+
+        # init
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+        if self.zero_init_residual:
+            for m in self.modules():
+                if isinstance(m, Bottleneck):
+                    nn.init.constant_(m.bn3.weight, 0)
+                elif isinstance(m, BasicBlock):
+                    nn.init.constant_(m.bn2.weight, 0)
 
     def forward(self, x):
         return self.resnet50(x)
@@ -69,8 +90,7 @@ class MixClassifier(pl.LightningModule):
             correct = pred.eq(target.view(1, -1).expand_as(pred))
             res = []
             for k in topk:
-                correct_k = correct[:k].reshape(-1).float().sum(0,
-                                                                keepdim=True)
+                correct_k = correct[:k].reshape(-1).float().sum(0,keepdim=True)
                 res.append(correct_k.mul_(100.0 / batch_size))
             return res
 
@@ -92,7 +112,9 @@ class MixClassifier(pl.LightningModule):
         y_pred = self.forward(x_image)
 
         # loss calculation
-        loss_train = F.cross_entropy(y_pred, y_true)
+        # loss_train = F.cross_entropy(y_pred, y_true)
+        # label smoothing
+        loss_train = self.lsr_loss(y_pred, y_true)
 
         # train accuracy calculation
         acc1, acc5 = self.custom_accuracy(y_pred, y_true, topk=(1, 5))
@@ -100,8 +122,10 @@ class MixClassifier(pl.LightningModule):
         # Save metrics for current batch
         self.log("train_loss", loss_train, on_step=True,
                  on_epoch=True, logger=True)
-        self.log("train_acc1", acc1, on_step=True, on_epoch=True, logger=True)
-        self.log("train_acc5", acc5, on_step=True, on_epoch=True, logger=True)
+        self.log("train_acc1", acc1, on_step=True,
+                 on_epoch=True, logger=True, prog_bar=True)
+        self.log("train_acc5", acc5, on_step=True,
+                 on_epoch=True, logger=True, prog_bar=True)
 
         # TODO 这种返回猜测应该是会输出到屏幕的内容，所以key的值可自定义
         return loss_train
@@ -112,30 +136,36 @@ class MixClassifier(pl.LightningModule):
         y_pred = self.forward(x_image)
 
         # compute loss
-        loss_valid = F.cross_entropy(y_pred, y_true)
+        # loss_valid = F.cross_entropy(y_pred, y_true)
+        # label smoothing
+        loss_valid = self.lsr_loss(y_pred, y_true)
 
         # compute accuracy
         acc1, acc5 = self.custom_accuracy(y_pred, y_true, topk=(1, 5))
 
-        self.log('val_loss', loss_valid, on_step=True, on_epoch=True)
-        self.log('val_acc1', acc1, on_step=True, prog_bar=True, on_epoch=True)
-        self.log('val_acc5', acc5, on_step=True, on_epoch=True)
+        self.log('val_loss', loss_valid, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_acc1', acc1, on_step=True, prog_bar=True, on_epoch=True, logger=True)
+        self.log('val_acc5', acc5, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
     def test_step(self, *args, **kwargs):
         return self.validation_step(*args, **kwargs)
 
     def train_dataloader(self):
-        dataloader = get_train_dataloader(
+        # dataloader = get_train_dataloader(
+        #     self.root_path, batch_size=self.batch_size, workers=self.workers)
+        dataloader = get_mix_train_dataloader(
             self.root_path, batch_size=self.batch_size, workers=self.workers)
         return dataloader
 
     def val_dataloader(self):
-        dataloader = get_val_dataloader(
+        # dataloader = get_val_dataloader(
+        #     self.root_path, batch_size=self.batch_size, workers=self.workers)
+        dataloader = get_mix_val_dataloader(
             self.root_path, batch_size=self.batch_size, workers=self.workers)
         return dataloader
 
     def test_dataloader(self):
-        dataloader = get_val_dataloader(
+        dataloader = get_mix_val_dataloader(
             self.root_path, batch_size=self.batch_size, workers=self.workers)
         return dataloader
 
@@ -146,7 +176,7 @@ class MixClassifier(pl.LightningModule):
         parser.add_argument('-j', '--workers', default=4,
                             type=int, metavar="N")
         parser.add_argument('-l', '--learning_rate', type=float,
-                            default=0.001, dest="learning_rate")
+                            default=0.1, dest="learning_rate")
         parser.add_argument('-b', '--batch_size', type=int,
                             default=64, dest="batch_size")
         parser.add_argument('--momentum', default=0.9,
@@ -166,13 +196,13 @@ def process_args():
     parent_parser = argparse.ArgumentParser()
     parent_parser = pl.Trainer.add_argparse_args(parent_parser)
     parent_parser.add_argument(
-        '--root_path', type=str, default="/media/niu/niu_d/data/imagenet", metavar="DIR", dest="root_path")
+        '--root_path', type=str, default="/media/niu/niu_g/data/imagenet", metavar="DIR", dest="root_path")
     parent_parser.add_argument('--seed', type=int, default=1234)
     parser = MixClassifier.add_model_specific_args(parent_parser)
     parser.set_defaults(
         profile=True,
         deterministic=True,
-        max_epochs=20,
+        max_epochs=90,
     )
     args = parser.parse_args()
     return args
@@ -194,15 +224,27 @@ def mix_main(args: Namespace) -> None:
     ######################
     # model trainer
     ######################
+
     model = MixClassifier(**vars(args))
 
+    # profiler = AdvancedProfiler
+    checkpoint_callback = ModelCheckpoint(
+        # save_best_only=False,
+        verbose=True,
+        monitor='val_loss',
+        mode='min',
+        filename='imagenet_1k-{epoch:02d}-{val_loss:.2f}')
+
     trainer = pl.Trainer(max_epochs=args.max_epochs,
-                         amp_level="01",
-                         progress_bar_refresh_rate=5,
-                        #  auto_scale_batch_size='binsearch',
+                        #  amp_level='01',
+                        #  amp_backend='apex',
+                         progress_bar_refresh_rate=1,
                          gpus='-1',
                          deterministic=True,
-                         accumulate_grad_batches=16)
+                         profiler='advanced',
+                         checkpoint_callback=checkpoint_callback,
+                         accumulate_grad_batches=4,
+                         distributed_backend="ddp")
 
     # lr_finder = trainer.tuner.lr_find(
     #     model, min_lr=5e-5, max_lr=5e-2, mode='linear')
@@ -220,7 +262,9 @@ def mix_main(args: Namespace) -> None:
 
     # test
     test_dataloader = model.test_dataloader()
-    results = trainer.test(test_dataloaders=test_dataloader)
+    results = trainer.test(
+        model,
+        test_dataloaders=test_dataloader)
     print("Results:", results)
 
 
