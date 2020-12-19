@@ -26,6 +26,12 @@ from utils.LabelSmoothing import LSR
 from mix_pil_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
 # from mix_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
 
+from pytorch_lightning.core.optimizer import LightningOptimizer
+
+from mix_dataloader import get_train_dataloader, get_val_dataloader
+from utils.WarmUp import WarmUpLR
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
 
 
 class MixClassifier(pl.LightningModule):
@@ -38,6 +44,7 @@ class MixClassifier(pl.LightningModule):
         root_path: str,
         batch_size: int,
         workers: int,
+        max_epochs: int, 
         **kwargs,
     ):
         super(MixClassifier, self).__init__()
@@ -50,6 +57,7 @@ class MixClassifier(pl.LightningModule):
         self.weight_decay = weight_decay
         self.workers = workers
         self.zero_init_residual = True
+        self.max_epochs = max_epochs
 
         # model
         self.resnet50 = resnet50(pretrained=pretrained)
@@ -98,11 +106,22 @@ class MixClassifier(pl.LightningModule):
         # 修改优化器
         optimizer = torch.optim.SGD(
             self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay, momentum=self.momentum)
+
         scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer,
             lambda epoch: 0.1 ** (epoch // 30)
         )
         return [optimizer], [scheduler]
+
+    def optimizer_step(self, current_epoch, batch_nb, optimizer, optimizer_idx, closure, on_tpu=False, using_native_amp=False, using_lbfgs=False):
+        # gradually warm up lr
+        steps_target = len(self.train_dataloader) * 5
+        if self.trainer.global_step < steps_target):  # hyper
+            lr_scale = min(1., float(self.trainer.current_epoch+1)/steps_target)
+            for pg in optimizer.param_groups:
+                pg['lr'] = lr_scale * self.hparams.learning_rate
+
+        optimizer.step(closure=closure)
 
     def training_step(self, batch, batch_idx):
         # 每一个循环内部执行
@@ -202,7 +221,7 @@ def process_args():
     parser.set_defaults(
         profile=True,
         deterministic=True,
-        max_epochs=90,
+        max_epochs=96,
     )
     args = parser.parse_args()
     return args
