@@ -188,6 +188,7 @@ def resnet50(pretrained=False, **kwargs):
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
+    model.fc = nn.Linear(2048, 184)
     if pretrained:
         model.load_state_dict(torch.load(os.path.join(models_dir, model_name['resnet50'])))
     return model
