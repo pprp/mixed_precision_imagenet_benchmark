@@ -21,11 +21,10 @@ from torchvision.datasets.mnist import MNIST
 from torchvision.models import resnet18, resnet50
 from torchvision.models.resnet import Bottleneck, BasicBlock
 from pytorch_lightning.callbacks import ModelCheckpoint
-from utils.WarmUp import WarmUpLR
+# from utils.WarmUp import WarmUpLR
 from utils.LabelSmoothing import LSR
 from mix_pil_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
 # from mix_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
-
 
 
 class MixClassifier(pl.LightningModule):
@@ -106,6 +105,17 @@ class MixClassifier(pl.LightningModule):
         )
         return [optimizer], [scheduler]
 
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu=False, using_native_amp=False, using_lbfgs=False):
+        # gradually warm up lr
+        steps_target = len(self.train_dataloader()) * 5
+        if self.trainer.global_step < steps_target:  # hyper
+            lr_scale = min(
+                1., float(self.trainer.current_epoch+1)/steps_target)
+            for pg in optimizer.param_groups:
+                pg['lr'] = lr_scale * self.learning_rate
+
+        optimizer.step(closure=optimizer_closure)
+
     def training_step(self, batch, batch_idx):
         # 每一个循环内部执行
         x_image, y_true = batch
@@ -145,9 +155,12 @@ class MixClassifier(pl.LightningModule):
         # compute accuracy
         acc1, acc5 = self.custom_accuracy(y_pred, y_true, topk=(1, 5))
 
-        self.log('val_loss', loss_valid, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('val_acc1', acc1, on_step=True, prog_bar=True, on_epoch=True, logger=True)
-        self.log('val_acc5', acc5, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_loss', loss_valid, on_step=True,
+                 on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_acc1', acc1, on_step=True,
+                 prog_bar=True, on_epoch=True, logger=True)
+        self.log('val_acc5', acc5, on_step=True,
+                 on_epoch=True, prog_bar=True, logger=True)
 
     def test_step(self, *args, **kwargs):
         return self.validation_step(*args, **kwargs)
@@ -198,7 +211,7 @@ def process_args():
     parent_parser = argparse.ArgumentParser()
     parent_parser = pl.Trainer.add_argparse_args(parent_parser)
     parent_parser.add_argument(
-        '--root_path', type=str, default="D:\imagenet_data", metavar="DIR", dest="root_path")
+        '--root_path', type=str, default="E:\imagenet_data", metavar="DIR", dest="root_path")
     parent_parser.add_argument('--seed', type=int, default=1234)
     parser = MixClassifier.add_model_specific_args(parent_parser)
     parser.set_defaults(
@@ -238,8 +251,8 @@ def mix_main(args: Namespace) -> None:
         filename='imagenet_184-{epoch:02d}-{val_loss:.2f}')
 
     trainer = pl.Trainer(max_epochs=args.max_epochs,
-                        #  amp_level='01',
-                        #  amp_backend='apex',
+                         amp_level='01',
+                         amp_backend='apex',
                          progress_bar_refresh_rate=1,
                          auto_scale_batch_size=True,
                          gpus='-1',
