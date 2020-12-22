@@ -3,13 +3,15 @@ import os
 import time
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data
 
-from models import *
 from data_loader import data_loader
-from helper import AverageMeter, save_checkpoint, accuracy, adjust_learning_rate
+from helper import (AverageMeter, accuracy, adjust_learning_rate,
+                    save_checkpoint)
+from models import *
 
 model_names = [
     'alexnet', 'squeezenet1_0', 'squeezenet1_1', 'densenet121',
@@ -18,6 +20,8 @@ model_names = [
     'vgg19', 'vgg19_bn', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
     'resnet152'
 ]
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 
 mixed_precision = False
 
@@ -35,11 +39,11 @@ parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='numer of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful to restarts)')
-parser.add_argument('-b', '--batch-size', default=64, type=int, metavar='N',
+parser.add_argument('-b', '--batch-size', default=128, type=int, metavar='N',
                     help='mini-batch size (default: 256)')
 parser.add_argument('--accumulate',
                     type=int,
-                    default=4,
+                    default=2,
                     help='batches to accumulate before optimizing')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float, metavar='LR',
                     help='initial learning rate')
@@ -118,7 +122,6 @@ def main():
 
     # use cuda
     model.cuda()
-    # model = torch.nn.parallel.DistributedDataParallel(model)
 
     # define loss and optimizer
     criterion = nn.CrossEntropyLoss().cuda()
@@ -127,7 +130,19 @@ def main():
                           weight_decay=args.weight_decay)
 
     if mixed_precision:
-        model, optimizer = amp.initialize(model, optimizer, opt_level="O1",verbosity=0)
+        model, optimizer = amp.initialize(
+            model, optimizer, opt_level="O1", verbosity=0)
+
+    if torch.cuda.device_count() > 1:
+        # 分布式训练
+        dist.init_process_group(
+            backend='nccl',
+            init_method="tcp://127.0.0.1:9998",
+            world_size=1,
+            rank=0
+        )    
+        model = torch.nn.parallel.DistributedDataParallel(model)
+
 
     # optionlly resume from a checkpoint
     if args.resume:
@@ -147,7 +162,7 @@ def main():
 
     # Data loading
     train_loader, val_loader = data_loader(
-        "E:\imagenet_data", args.batch_size, args.workers, args.pin_memory)
+        "/media/niu/niu_d/data/imagenet/", args.batch_size, args.workers, args.pin_memory)
 
     if args.evaluate:
         validate(val_loader, model, criterion, args.print_freq)
@@ -158,7 +173,7 @@ def main():
 
         # train for one epoch
         train(train_loader, model, criterion,
-              optimizer, epoch, args.print_freq,args.accumulate)
+              optimizer, epoch, args.print_freq, args.accumulate)
 
         # evaluate on validation set
         prec1, prec5 = validate(val_loader, model, criterion, args.print_freq)

@@ -18,6 +18,8 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
+from prefetch_generator import BackgroundGenerator
+
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
@@ -25,12 +27,12 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
+parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet50',
                     choices=model_names,
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -110,6 +112,10 @@ def main():
     else:
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
+
+# class DataLoaderX(torch.utils.data.DataLoader):
+#     def __iter__(self):
+#         return BackgroundGenerator(super().__iter__())
 
 
 def main_worker(gpu, ngpus_per_node, args):

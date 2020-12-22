@@ -21,12 +21,7 @@ from torchvision.datasets.mnist import MNIST
 from torchvision.models import resnet18, resnet50
 from torchvision.models.resnet import Bottleneck, BasicBlock
 from pytorch_lightning.callbacks import ModelCheckpoint
-# from utils.WarmUp import WarmUpLR
-# from utils.LabelSmoothing import LSR
 from mix_pil_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
-# from mix_dataloader import get_mix_train_dataloader, get_mix_val_dataloader
-
-# from pytorch_lightning.core.optimizer import LightningOptimizer
 
 
 class MixClassifier(pl.LightningModule):
@@ -56,7 +51,7 @@ class MixClassifier(pl.LightningModule):
 
         # model
         self.resnet50 = resnet50(pretrained=pretrained)
-        self.lsr_loss = nn.CrossEntropyLoss() #LSR()
+        self.ce_loss = nn.CrossEntropyLoss()
 
         # Built-in API for metrics
         self.train_accuracy = pl.metrics.Accuracy()
@@ -112,9 +107,12 @@ class MixClassifier(pl.LightningModule):
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu=False, using_native_amp=False, using_lbfgs=False):
         # gradually warm up lr
         steps_target = len(self.train_dataloader()) * 5
-        if self.trainer.global_step < steps_target:  # hyper
+        global_step = self.trainer.global_step
+        print("global step: {global_step} \t step target: {steps_target}\n")
+
+        if global_step < steps_target:  # hyper
             lr_scale = min(
-                1., float(self.trainer.current_epoch+1)/steps_target)
+                1., float(global_step+1)/steps_target)
             for pg in optimizer.param_groups:
                 pg['lr'] = lr_scale * self.learning_rate
         optimizer.step(closure=optimizer_closure)
@@ -129,7 +127,7 @@ class MixClassifier(pl.LightningModule):
         # loss calculation
         # loss_train = F.cross_entropy(y_pred, y_true)
         # label smoothing
-        loss_train = self.lsr_loss(y_pred, y_true)
+        loss_train = self.ce_loss(y_pred, y_true)
 
         # train accuracy calculation
         acc1, acc5 = self.custom_accuracy(y_pred, y_true, topk=(1, 5))
@@ -153,7 +151,7 @@ class MixClassifier(pl.LightningModule):
         # compute loss
         # loss_valid = F.cross_entropy(y_pred, y_true)
         # label smoothing
-        loss_valid = self.lsr_loss(y_pred, y_true)
+        loss_valid = self.ce_loss(y_pred, y_true)
 
         # compute accuracy
         acc1, acc5 = self.custom_accuracy(y_pred, y_true, topk=(1, 5))
@@ -169,15 +167,11 @@ class MixClassifier(pl.LightningModule):
         return self.validation_step(*args, **kwargs)
 
     def train_dataloader(self):
-        # dataloader = get_train_dataloader(
-        #     self.root_path, batch_size=self.batch_size, workers=self.workers)
         dataloader = get_mix_train_dataloader(
             self.root_path, batch_size=self.batch_size, workers=self.workers)
         return dataloader
 
     def val_dataloader(self):
-        # dataloader = get_val_dataloader(
-        #     self.root_path, batch_size=self.batch_size, workers=self.workers)
         dataloader = get_mix_val_dataloader(
             self.root_path, batch_size=self.batch_size, workers=self.workers)
         return dataloader
@@ -194,9 +188,9 @@ class MixClassifier(pl.LightningModule):
         parser.add_argument('-j', '--workers', default=4,
                             type=int, metavar="N")
         parser.add_argument('-l', '--learning_rate', type=float,
-                            default=0.01, dest="learning_rate")
+                            default=0.1, dest="learning_rate")
         parser.add_argument('-b', '--batch_size', type=int,
-                            default=64, dest="batch_size")
+                            default=256, dest="batch_size")
         parser.add_argument('--momentum', default=0.9,
                             type=float, metavar='M', dest="momentum")
         parser.add_argument('--wd', '--weight_decay', default=1e-4,
