@@ -21,19 +21,20 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def accuracy(output, target, topk=(1,)):
+def accuracy(output, target, topk=(1,)): # 64 184
     """Computes the precision@k for the specified values of k"""
     maxk = max(topk)
     batch_size = target.size(0)
     _, pred = output.topk(maxk, 1, largest=True, sorted=True)
-    pred = pred.t()
+    pred = pred.t() # 64, 5 -> 5, 64
     correct = pred.eq(target.view(1, -1).expand_as(pred))
 
     res = []
     for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+        correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
+
 
 
 def save_checkpoint(state, is_best, filename='alex_checkpoint.pth'):

@@ -19,6 +19,14 @@ model_names = [
     'resnet152'
 ]
 
+mixed_precision = False
+
+try:
+    from apex import amp
+except:
+    mixed_precision = False
+
+
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 # parser.add_argument('data', metavar='DIR', help='path to dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet50', choices=model_names,
@@ -27,8 +35,12 @@ parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='numer of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful to restarts)')
-parser.add_argument('-b', '--batch-size', default=1, type=int, metavar='N',
+parser.add_argument('-b', '--batch-size', default=64, type=int, metavar='N',
                     help='mini-batch size (default: 256)')
+parser.add_argument('--accumulate',
+                    type=int,
+                    default=4,
+                    help='batches to accumulate before optimizing')
 parser.add_argument('--lr', '--learning-rate', default=0.01, type=float, metavar='LR',
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
@@ -114,6 +126,9 @@ def main():
                           momentum=args.momentum,
                           weight_decay=args.weight_decay)
 
+    if mixed_precision:
+        model, optimizer = amp.initialize(model, optimizer, opt_level="O1",verbosity=0)
+
     # optionlly resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
@@ -143,12 +158,12 @@ def main():
 
         # train for one epoch
         train(train_loader, model, criterion,
-              optimizer, epoch, args.print_freq)
+              optimizer, epoch, args.print_freq,args.accumulate)
 
         # evaluate on validation set
         prec1, prec5 = validate(val_loader, model, criterion, args.print_freq)
 
-        # remember the best prec@1 and save checkpoint
+        # remember the best Acc@1 and save checkpoint
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
 
@@ -161,18 +176,22 @@ def main():
         }, is_best, args.arch + '.pth')
 
 
-def train(train_loader, model, criterion, optimizer, epoch, print_freq):
+def train(train_loader, model, criterion, optimizer, epoch, print_freq, accumulate):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
 
+    nb = len(train_loader)
+
     # switch to train mode
     model.train()
 
     end = time.time()
     for i, (input, target) in enumerate(train_loader):
+        ni = i + epoch * nb
+
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -184,15 +203,21 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq):
         loss = criterion(output, target)
 
         # measure accuracy and record loss
-        prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
+        prec1, prec5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1.update(prec1[0], input.size(0))
         top5.update(prec1[0], input.size(0))
 
         # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if mixed_precision:
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            loss.backward()
+
+        if ni % accumulate == 0:
+            optimizer.step()
+            optimizer.zero_grad()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -202,9 +227,9 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq):
             print('Epoch: [{0}][{1}/{2}]\t'
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                  'Prec@5 {top5.val:.3f} ({top5.avg:.3f})\t'.format(
+                  'Loss {loss.val:.4f} ({loss.avg:.4f}) \t '
+                  'Acc@1 {top1.val:.3f} ({top1.avg:.3f}) \t'
+                  'Acc@5 {top5.val:.3f} ({top5.avg:.3f}) \t'.format(
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses, top1=top1, top5=top5))
 
@@ -241,13 +266,13 @@ def validate(val_loader, model, criterion, print_freq):
                 print('Test: [{0}/{1}]\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
-                      'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
+                      'Acc@1 {top1.val:.3f} ({top1.avg:.3f})\t'
+                      'Acc@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
                           i, len(val_loader), batch_time=batch_time, loss=losses,
                           top1=top1, top5=top5))
 
     print(
-        ' * Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}'.format(top1=top1, top5=top5))
+        ' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'.format(top1=top1, top5=top5))
 
     return top1.avg, top5.avg
 
