@@ -3,6 +3,15 @@ import os
 import torch
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+from torch.utils.data import DataLoader
+
+
+from prefetch_generator import BackgroundGenerator
+
+
+class DataLoaderX(DataLoader):
+    def __iter__(self):
+        return BackgroundGenerator(super().__iter__())
 
 
 def data_loader(root, batch_size=256, workers=1, pin_memory=True):
@@ -30,7 +39,7 @@ def data_loader(root, batch_size=256, workers=1, pin_memory=True):
         ])
     )
 
-    train_loader = torch.utils.data.DataLoader(
+    train_loader = DataLoaderX(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
@@ -38,11 +47,13 @@ def data_loader(root, batch_size=256, workers=1, pin_memory=True):
         pin_memory=pin_memory,
         sampler=None
     )
-    val_loader = torch.utils.data.DataLoader(
+
+    val_loader = DataLoaderX(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
         num_workers=workers,
         pin_memory=pin_memory
     )
+
     return train_loader, val_loader
