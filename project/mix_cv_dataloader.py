@@ -73,11 +73,11 @@ def get_mix_train_dataloader(root_path, batch_size, workers):
     train_trans = A.Compose([
         A.RandomResizedCrop(224),
         A.RandomHorizontalFlip(0.5),
-        A.RandomRotation(degrees=15),
-        A.ColorJitter(
-            brightness=BRIGHTNESS, contrast=CONTRAST, hue=HUE, saturation=SATURATION),
+        # A.RandomRotation(degrees=15),
+        # A.ColorJitter(
+        #     brightness=BRIGHTNESS, contrast=CONTRAST, hue=HUE, saturation=SATURATION),
         A.ToTensor(),
-        Lighting(0.1, __imagenet_pca['eigval'], __imagenet_pca['eigvec']),
+        # Lighting(0.1, __imagenet_pca['eigval'], __imagenet_pca['eigvec']),
         A.Normalize([0.485, 0.456, 0.406],
                     [0.229, 0.224, 0.225])
     ])
@@ -89,7 +89,7 @@ def get_mix_train_dataloader(root_path, batch_size, workers):
 
 def get_mix_val_dataloader(root_path, batch_size, workers):
     val_trans = A.Compose([
-        A.Resize((448, 448)),
+        A.Resize(256),
         A.CenterCrop(
             (224, 224)),
         A.ToTensor(),

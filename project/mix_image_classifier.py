@@ -256,7 +256,8 @@ def mix_main(args: Namespace) -> None:
                          profiler='advanced',
                          checkpoint_callback=checkpoint_callback,
                          accumulate_grad_batches=4,
-                         distributed_backend="ddp")
+                         distributed_backend="ddp",
+                         profiler='advanced')
 
     # lr_finder = trainer.tuner.lr_find(
     #     model, min_lr=5e-5, max_lr=5e-2, mode='linear')

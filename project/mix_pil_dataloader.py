@@ -155,7 +155,6 @@ def mix_pil_loader(path: str):
     with open(path, "rb") as f:
         img = Image.open(f)
         img = resize_img(img, BASE_RESIZE_SIZE)
-
     return img.convert("RGB")
 
 
