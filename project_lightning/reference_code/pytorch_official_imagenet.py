@@ -18,7 +18,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
-from prefetch_generator import BackgroundGenerator
+from torch.cuda.amp import GradScaler, autocast
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -113,11 +113,6 @@ def main():
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
 
-# class DataLoaderX(torch.utils.data.DataLoader):
-#     def __iter__(self):
-#         return BackgroundGenerator(super().__iter__())
-
-
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
     args.gpu = gpu
@@ -180,6 +175,8 @@ def main_worker(gpu, ngpus_per_node, args):
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
+    scaler = GradScaler()
+
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
@@ -197,6 +194,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 best_acc1 = best_acc1.to(args.gpu)
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
+            scaler.load_state_dict(checkpoint['scaler'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
@@ -241,6 +239,7 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.evaluate:
         validate(val_loader, model, criterion, args)
         return
+    
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -248,7 +247,7 @@ def main_worker(gpu, ngpus_per_node, args):
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        train(train_loader, model, criterion, optimizer, epoch, scaler,args)
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
@@ -265,10 +264,11 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
+                'scaler': scaler.state_dict()
             }, is_best)
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args):
+def train(train_loader, model, criterion, optimizer, epoch, scaler, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -293,8 +293,13 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
             target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
-        output = model(images)
-        loss = criterion(output, target)
+        # output = model(images)
+        # loss = criterion(output, target)
+        
+        # NEW AMP 核心的将fp32->转化到fp16
+        with autocast():
+            output = model(images)
+            loss = criterion(output, target)
 
         # measure accuracy and record loss
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -304,8 +309,15 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+
+        # loss.backward()
+        # NEW AMP
+        scaler.scale(loss).backward()
+
+        # optimizer.step()
+        # NEW AMP
+        scaler.step(optimizer)
+        scaler.update()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
