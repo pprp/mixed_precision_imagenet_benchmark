@@ -5,3 +5,5 @@ lightning_logs/*
 .vscode/sftp.json
 *.pyc
 tfboard_logs/*
+*.pt
+*.tar

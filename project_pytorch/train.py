@@ -223,7 +223,7 @@ def main_worker(gpu, ngpus_per_node, args):
         args.data, args.distributed, args.workers, args.batch_size)
 
     if args.evaluate:
-        validate(val_loader, model, criterion, writer, args)
+        validate(val_loader, model, criterion, writer, 0,  args)
         return
 
     for epoch in range(args.start_epoch, args.epochs):
@@ -236,7 +236,7 @@ def main_worker(gpu, ngpus_per_node, args):
               optimizer, epoch, scaler, writer, args)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
+        acc1 = validate(val_loader, model, criterion, writer, epoch,  args)
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
@@ -268,6 +268,8 @@ def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args
     # switch to train mode
     model.train()
 
+    global_step = epoch * len(train_loader)
+
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
         # measure data loading time
@@ -277,6 +279,9 @@ def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args
             images = images.cuda(args.gpu, non_blocking=True)
         if torch.cuda.is_available():
             target = target.cuda(args.gpu, non_blocking=True)
+
+        # global steps calculation
+        global_step = global_step + images.size(0) * i
 
         # compute output
         # output = model(images)
@@ -294,9 +299,10 @@ def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args
         top5.update(acc5[0], images.size(0))
 
         # tensorboard
-        writer.add_scalar("train_batch", "acc1", acc1[0])
-        writer.add_scalar("train_batch", "acc5", acc5[0])
-        writer.add_scalar("train_batch", "loss", loss.item())
+        writer.add_scalar("train_batch", "acc1", acc1[0], global_step)
+        writer.add_scalar("train_batch", "acc5", acc5[0], global_step)
+        writer.add_scalar("train_batch", "loss", loss.item(), global_step)
+        writer.add_scalar("epoch", "epoch", epoch, global_step)
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -318,7 +324,7 @@ def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args
             progress.display(i)
 
 
-def validate(val_loader, model, criterion, writer, args):
+def validate(val_loader, model, criterion, writer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -350,9 +356,9 @@ def validate(val_loader, model, criterion, writer, args):
             top5.update(acc5[0], images.size(0))
 
             # tensorboard
-            writer.add_scalar("train_batch", "acc1", acc1[0])
-            writer.add_scalar("train_batch", "acc5", acc5[0])
-            writer.add_scalar("train_batch", "loss", loss.item())
+            writer.add_scalar("val_epoch", "acc1", acc1[0], epoch)
+            writer.add_scalar("val_epoch", "acc5", acc5[0], epoch)
+            writer.add_scalar("val_epoch", "loss", loss.item(), epoch)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
