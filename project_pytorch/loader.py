@@ -5,6 +5,50 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 
 
+def get_train_dataloader(rootdir, distributed=False, workers=8, batch_size=64):
+    traindir = os.path.join(rootdir, "train")
+    train_transform = transforms.Compose([
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406],
+                             [0.229, 0.224, 0.225])
+    ])
+    train_dataset = datasets.ImageFolder(train_dir, train_transform)
+    if distributed:
+        train_sampler = torch.utils.data.distributed.DistributedSampler(
+            train_dataset)
+    else:
+        train_sampler = None
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
+                                               shuffle=(train_sampler=None),
+                                               num_workers=workers,
+                                               pin_memory=True,
+                                               sampler=train_sampler)
+    return train_loader
+
+
+def get_val_dataloader(rootdir, distributed=False, workers=8, batch_size=64):
+    valdir = os.path.join(rootdir, "val")
+    val_transformer = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406],
+                             [0.229, 0.224, 0.225])
+    ])
+    val_dataset = datasets.ImageFolder(valdir, val_transformer)
+    if distributed:
+        val_sampler = torch.utils.data.distributed.DistributedSampler(
+            val_dataset)
+    else:
+        val_sampler = None
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False, sampler=val_sampler)
+    return val_loader
+
+
 def get_train_val_dataloader(rootdir, distributed=False, workers=8, batch_size=64):
     # Data loading code
     traindir = os.path.join(rootdir, 'train')
@@ -41,5 +85,5 @@ def get_train_val_dataloader(rootdir, distributed=False, workers=8, batch_size=6
         ])),
         batch_size=batch_size, shuffle=False,
         num_workers=workers, pin_memory=True)
-    
-    return train_loader,val_loader, train_sampler
+
+    return train_loader, val_loader, train_sampler
