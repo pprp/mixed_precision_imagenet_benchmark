@@ -7,3 +7,4 @@ lightning_logs/*
 tfboard_logs/*
 *.pt
 *.tar
+*.0

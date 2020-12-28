@@ -31,6 +31,8 @@ model_names = sorted(name for name in models.__dict__
 
 
 best_acc1 = 0
+global_step = 0
+val_global_step = 0
 
 
 def get_parser():
@@ -48,12 +50,12 @@ def get_parser():
                         help='number of total epochs to run')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
-    parser.add_argument('-b', '--batch-size', default=256, type=int,
+    parser.add_argument('-b', '--batch-size', default=512, type=int,
                         metavar='N',
                         help='mini-batch size (default: 256), this is the total '
                         'batch size of all GPUs on the current node when '
                         'using Data Parallel or Distributed Data Parallel')
-    parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.2, type=float,
                         metavar='LR', help='initial learning rate', dest='lr')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                         help='momentum')
@@ -255,6 +257,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
 
 def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args):
+    global global_step
+
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -268,7 +272,8 @@ def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args
     # switch to train mode
     model.train()
 
-    global_step = epoch * len(train_loader)
+    # epoch记录一次就好
+    writer.add_scalar("epoch", "epoch", epoch, global_step)
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
@@ -281,7 +286,7 @@ def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args
             target = target.cuda(args.gpu, non_blocking=True)
 
         # global steps calculation
-        global_step = global_step + images.size(0) * i
+        global_step = global_step + 1
 
         # compute output
         # output = model(images)
@@ -302,7 +307,6 @@ def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args
         writer.add_scalar("train_batch", "acc1", acc1[0], global_step)
         writer.add_scalar("train_batch", "acc5", acc5[0], global_step)
         writer.add_scalar("train_batch", "loss", loss.item(), global_step)
-        writer.add_scalar("epoch", "epoch", epoch, global_step)
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -325,6 +329,7 @@ def train(train_loader, model, criterion, optimizer, epoch, scaler, writer, args
 
 
 def validate(val_loader, model, criterion, writer, epoch, args):
+    global val_global_step
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -340,6 +345,8 @@ def validate(val_loader, model, criterion, writer, epoch, args):
     with torch.no_grad():
         end = time.time()
         for i, (images, target) in enumerate(val_loader):
+            val_global_step = val_global_step + 1
+
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
             if torch.cuda.is_available():
@@ -351,14 +358,16 @@ def validate(val_loader, model, criterion, writer, epoch, args):
 
             # measure accuracy and record loss
             acc1, acc5 = accuracy(output, target, topk=(1, 5))
+
+            # tensorboard
+            writer.add_scalar("val_batch", "acc1", acc1[0], val_global_step)
+            writer.add_scalar("val_batch", "acc5", acc5[0], val_global_step)
+            writer.add_scalar("val_batch", "loss",
+                              loss.item(), val_global_step)
+
             losses.update(loss.item(), images.size(0))
             top1.update(acc1[0], images.size(0))
             top5.update(acc5[0], images.size(0))
-
-            # tensorboard
-            writer.add_scalar("val_epoch", "acc1", acc1[0], epoch)
-            writer.add_scalar("val_epoch", "acc5", acc5[0], epoch)
-            writer.add_scalar("val_epoch", "loss", loss.item(), epoch)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
