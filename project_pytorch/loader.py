@@ -14,7 +14,7 @@ def get_train_dataloader(rootdir, distributed=False, workers=8, batch_size=64):
         transforms.Normalize([0.485, 0.456, 0.406],
                              [0.229, 0.224, 0.225])
     ])
-    train_dataset = datasets.ImageFolder(train_dir, train_transform)
+    train_dataset = datasets.ImageFolder(traindir, train_transform)
     if distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(
             train_dataset)
@@ -22,7 +22,7 @@ def get_train_dataloader(rootdir, distributed=False, workers=8, batch_size=64):
         train_sampler = None
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
-                                               shuffle=(train_sampler=None),
+                                               shuffle=(train_sampler is None),
                                                num_workers=workers,
                                                pin_memory=True,
                                                sampler=train_sampler)
@@ -45,7 +45,7 @@ def get_val_dataloader(rootdir, distributed=False, workers=8, batch_size=64):
     else:
         val_sampler = None
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, sampler=val_sampler)
+        val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, sampler=val_sampler)
     return val_loader
 
 
@@ -87,3 +87,9 @@ def get_train_val_dataloader(rootdir, distributed=False, workers=8, batch_size=6
         num_workers=workers, pin_memory=True)
 
     return train_loader, val_loader, train_sampler
+
+if __name__ == "__main__":
+    val_loader = get_val_dataloader('E:/imagenet_data')
+
+    for i,(a,b) in enumerate(val_loader):
+        print(a.shape, b.shape)

@@ -2,10 +2,12 @@ import torch
 import torchvision
 from torch.utils.data import DataLoader
 import models
-from loader import get_val_dataloader
+from loader import get_val_dataloader,get_train_dataloader
 import argparse
 from utils import accuracy
 import torch.nn as nn
+from collections import OrderedDict
+from utils import accuracy
 
 
 def get_parser():
@@ -14,24 +16,23 @@ def get_parser():
                         default="E:/imagenet_data", help='root dir of imagenet')
     parser.add_argument('-b', '--batch_size', type=int,
                         default=64, help='batch size')
-    parser.add_argument('--arch', type='str',
+    parser.add_argument('--arch', type=str,
                         default='resnet50', help='CNN architecture')
-    parser.add_argument('--gpu', type=int, default=None,
+    parser.add_argument('--gpu', type=int, default=0,
                         help='GPU id to use')
     parser.add_argument('--distributed', type=bool,
                         default=False, help='multi gpu inference')
     parser.add_argument('-j', '--workers', type=int,
-                        default=4, help='num of workers')
+                        default=8, help='num of workers')
     parser.add_argument('--load_path', type=str,
-                        default='checkpoints', help='weights path')
+                        default='checkpoints/epoch_90_resnet50.pt', help='weights path')
     args = parser.parse_args()
     return args
 
 
 def main():
     args = get_parser()
-
-    val_loader = get_val_dataloader(
+    val_loader = get_train_dataloader(
         args.rootdir, args.distributed, args.workers, args.batch_size)
 
     # model new
@@ -40,46 +41,61 @@ def main():
     # checkpoint load
     if args.gpu is None:
         # cpu
+        print("=> loading checkpoint '{}'".format(args.load_path))
         checkpoint = torch.load(args.load_path)
         model.load_state_dict(checkpoint['state_dict'])
     else:
         # gpu
+        print("=> loading checkpoint '{}'".format(args.load_path))
         torch.cuda.set_device(args.gpu)
         checkpoint = torch.load(
             args.load_path, map_location='cuda:{}'.format(args.gpu))
-        model.load_state_dict(checkpoint['state_dict'])
+        state_dict = checkpoint['state_dict']
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k[7:]
+            new_state_dict[name] = v
+
+        model.load_state_dict(new_state_dict)
         model = nn.DataParallel(model)  # 数据并行
         model = model.cuda(args.gpu)
 
-    print(model)
     model.eval()
 
+    total = len(val_loader)
+
+    #####################TEST ####################
+    # for i, (a, b) in enumerate(val_loader):
+    #     print(a.shape, b.shape)
+    ##############################################
+
     with torch.no_grad():
-        total = len(val_loader)
         correct_1 = 0
         correct_5 = 0
+        n_sample = 0
 
         for i, (images, targets) in enumerate(val_loader):
+            print('\r', i, end="")
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
-                targets = images.cuda(args.gpu, non_blocking=True)
+            if torch.cuda.is_available():
+                targets = targets.cuda(args.gpu, non_blocking=True)
 
             output = model(images)
 
-            _, pred = output.topk(5, 1, largest=True, sorted=True)
+            acc1, acc5 = accuracy(output, targets, topk=(1, 5))
 
-            targets = targets.view(targets.size(0), -1).expand_as(pred)
-            correct = pred.eq(label).float()
+            correct_1 += acc1
+            correct_5 += acc5
+            n_sample += 1
 
-            # top 5
-            correct_5 += correct[:, :5].sum()
-
-            # top 1
-            correct_1 += correct_1[:, :1].sum()
-
-        print("TOP 1:", correct_1/total)
-        print("TOP 5", correct_5/total)    
-        print("Parameter numbers: {}".format(sum(p.numel() for p in model.parameters())))
-
+        print("TOP 1:", correct_1/n_sample)
+        print("TOP 5", correct_5/n_sample)
+        print("Parameter numbers: {}".format(sum(p.numel()
+                                                 for p in model.parameters())))
 
         # acc1, acc5 = accuracy(output, target, topk=(1, 5))
+
+
+if __name__ == "__main__":
+    main()
