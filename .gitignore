@@ -8,3 +8,4 @@ tfboard_logs/*
 *.pt
 *.tar
 *.0
+*.out
