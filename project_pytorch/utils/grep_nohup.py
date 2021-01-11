@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 
 
-f = open("./nohup.out", 'r')
+f = open("./exp_4_nohup.out", 'r')
 
 flines = f.readlines()
 
@@ -23,11 +23,11 @@ for fline in flines:
     if fline.startswith("Test"):
         line_content_val.append(fline)
 
-with open("p_nohup_train.out", 'w') as fo:
+with open("p4_nohup_train.out", 'w') as fo:
     for line in line_content_train:
         fo.write(line)
 
-with open("p_nohup_val.out", 'w') as fo:
+with open("p4_nohup_val.out", 'w') as fo:
     for line in line_content_val:
         fo.write(line)
 

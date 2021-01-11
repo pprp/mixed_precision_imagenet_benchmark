@@ -9,8 +9,8 @@ matplotlib.rcParams['font.sans-serif'] = 'NSimSun,Times New Roman'
 plt.style.use("seaborn-paper")
 
 
-f_train = open("p_nohup_train.out", "r")
-f_val = open("p_nohup_val.out", "r")
+f_train = open("p4_nohup_train.out", "r")
+f_val = open("p4_nohup_val.out", "r")
 
 f_train_contents = f_train.readlines()
 f_val_contents = f_val.readlines()
@@ -33,7 +33,8 @@ f_val_contents = f_val.readlines()
 #     train_acc1.append(p1)
 #     train_acc5.append(p5)
 
-def plot_standard(x, y, x_legend:str, y_legend:str, title:str):
+
+def plot_standard(x, y, x_legend: str, y_legend: str, title: str):
     plt.figure()
     x_smooth = np.linspace(np.array(x).min(), np.array(x).max(), 1000)
     y_smooth = make_interp_spline(x, y)(x_smooth)
@@ -47,9 +48,9 @@ def plot_standard(x, y, x_legend:str, y_legend:str, title:str):
     plt.clf()
 
 
-def plot_val(x, y, x_legend:str, y_legend:str, title:str):
+def plot_val(x, y, x_legend: str, y_legend: str, title: str):
     plt.figure()
-    x_smooth = np.linspace(np.array(x).min(), np.array(x).max(), 1000000)
+    x_smooth = np.linspace(np.array(x).min(), np.array(x).max(), 10000)
     y_smooth = make_interp_spline(x, y)(x_smooth)
     # plt.plot(x, y, color='red', label='Original')
     plt.plot(x_smooth, y_smooth, color='blue', label='Fitting')
@@ -60,41 +61,13 @@ def plot_val(x, y, x_legend:str, y_legend:str, title:str):
     plt.show()
     plt.clf()
 
-# plt.figure()
-# x_smooth = np.linspace(np.array(train_x).min(), np.array(train_x).max(), 1000)
-# y_smooth = make_interp_spline(train_x, train_loss)(x_smooth)
-# plt.plot(train_x, train_loss, color='red', label='Original')
-# plt.plot(x_smooth, y_smooth, color='blue', label='Fitting')
-# plt.title("O2: Loss of Training Process", fontsize=16)
-# plt.xlabel("Steps", fontsize=16)
-# plt.ylabel("Loss", fontsize=16)
-# plt.legend(fontsize=16)
-# plt.show()
-# plt.clf()
 
-# plt.figure()
-# x_smooth = np.linspace(np.array(train_x).min(), np.array(train_x).max(), 1000)
-# y_smooth = make_interp_spline(train_x, train_acc1)(x_smooth)
-# plt.plot(train_x, train_acc1, color='red', label='Original')
-# plt.plot(x_smooth, y_smooth, color='blue', label='Fitting')
-# plt.title("O2: Top1 Accuracy of Training Process", fontsize=16)
-# plt.xlabel("Steps", fontsize=16)
-# plt.ylabel("Acc1", fontsize=16)
-# plt.legend(fontsize=16)
-# plt.show()
-# plt.clf()
+# plot_standard(train_x, train_loss, x_legend="Steps", y_legend="Loss", title="O3: Loss of Training Process")
+# plot_standard(train_x, train_acc1, x_legend="Steps", y_legend="Acc1", title="O3: Top1 Accuracy of Training Process")
+# plot_standard(train_x, train_acc5, x_legend="Steps", y_legend="Acc5", title="O3: Top5 Accuracy of Training Process")
 
-# plt.figure()
-# x_smooth = np.linspace(np.array(train_x).min(), np.array(train_x).max(), 1000)
-# y_smooth = make_interp_spline(train_x, train_acc5)(x_smooth)
-# plt.plot(train_x, train_acc5, color='red', label='Original')
-# plt.plot(x_smooth, y_smooth, color='blue', label='Fitting')
-# plt.title("O2: Top5 Accuracy of Training Process", fontsize=16)
-# plt.xlabel("Steps", fontsize=16)
-# plt.ylabel("Acc5", fontsize=16)
-# plt.legend(fontsize=16)
-# plt.show()
 
+# for val
 val_x = []
 val_acc1 = []
 val_acc5 = []
@@ -111,9 +84,7 @@ for i, line in enumerate(f_val_contents):
     val_acc1.append(p1)
     val_acc5.append(p5)
 
-# plot_val(val_x, val_loss, x_legend="Steps", y_legend="Loss", title="O2: Loss of Validation Process")
 
+plot_val(val_x, val_loss, x_legend="Steps", y_legend="Loss", title="O2: Loss of Validation Process")
 # plot_val(val_x, val_acc1, x_legend="Steps", y_legend="Acc1", title="O2: Top1 Accuracy of Validation Process")
-
-
-plot_val(val_x, val_acc5, x_legend="Steps", y_legend="Acc5", title="O2: Top5 Accuracy of Validation Process")
+# plot_val(val_x, val_acc5, x_legend="Steps", y_legend="Acc5", title="O2: Top5 Accuracy of Validation Process")
