@@ -9,3 +9,5 @@ tfboard_logs/*
 *.tar
 *.0
 *.out
+*.csv
+*.npy
