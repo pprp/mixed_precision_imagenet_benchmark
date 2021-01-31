@@ -34,7 +34,6 @@ except ImportError:
 
 
 def fast_collate(batch, memory_format):
-
     imgs = [img[0] for img in batch]
     targets = torch.tensor([target[1] for target in batch], dtype=torch.int64)
     w = imgs[0].size[0]
@@ -79,6 +78,7 @@ def parse():
                         metavar='W', help='weight decay (default: 1e-4)')
     parser.add_argument('--print-freq', '-p', default=10, type=int,
                         metavar='N', help='print frequency (default: 10)')
+
     parser.add_argument('--resume', default='', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none)')
     parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
@@ -116,6 +116,7 @@ def main():
 
     cudnn.benchmark = True
     best_prec1 = 0
+
     if args.deterministic:
         cudnn.benchmark = False
         cudnn.deterministic = True
@@ -134,7 +135,7 @@ def main():
         torch.cuda.set_device(args.gpu)
         torch.distributed.init_process_group(backend='nccl',
                                              init_method='env://')
-        args.world_size = torch.distributed.get_world_size()
+        args.world_size = torch.distributed.get_world_size()  # 全局进程个数
 
     assert torch.backends.cudnn.enabled, "Amp requires cudnn backend to be enabled."
 
@@ -153,6 +154,7 @@ def main():
 
     if args.sync_bn:
         import apex
+        # 同步BN
         print("using apex synced BN")
         model = apex.parallel.convert_syncbn_model(model)
 
@@ -170,7 +172,7 @@ def main():
                                       opt_level=args.opt_level,
                                       keep_batchnorm_fp32=args.keep_batchnorm_fp32,
                                       loss_scale=args.loss_scale
-                                      )
+                                      )  # 初始化进程组
 
     # For distributed training, wrap the model with apex.parallel.DistributedDataParallel.
     # This must be done AFTER the call to amp.initialize.  If model = DDP(model) is called
@@ -181,7 +183,7 @@ def main():
         # computation in the backward pass.
         # model = DDP(model)
         # delay_allreduce delays all communication to the end of the backward pass.
-        model = DDP(model, delay_allreduce=True)
+        model = DDP(model, delay_allreduce=True)  # 创建分布式并行模型
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda()
@@ -226,6 +228,7 @@ def main():
             # transforms.ToTensor(), Too slow
             # normalize,
         ]))
+
     val_dataset = datasets.ImageFolder(valdir, transforms.Compose([
         transforms.Resize(val_size),
         transforms.CenterCrop(crop_size),
@@ -233,6 +236,7 @@ def main():
 
     train_sampler = None
     val_sampler = None
+
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(
             train_dataset)
@@ -326,11 +330,13 @@ class data_prefetcher():
             self.next_input = self.next_input.sub_(self.mean).div_(self.std)
 
     def next(self):
+        # 当前所选stream wait stream：等待事件self.stream完成
         torch.cuda.current_stream().wait_stream(self.stream)
         input = self.next_input
         target = self.next_target
         if input is not None:
-            input.record_stream(torch.cuda.current_stream())
+            input.record_stream(torch.cuda.current_stream()
+                                )  # 记录当前stream事件是否完成
         if target is not None:
             target.record_stream(torch.cuda.current_stream())
         self.preload()
@@ -368,10 +374,11 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # compute output
         if args.prof >= 0:
-            torch.cuda.nvtx.range_push("forward")
+            torch.cuda.nvtx.range_push("forward")  # 设置一个固定范围的堆栈,返回的堆栈范围深度从0开始.
+
         output = model(input)
         if args.prof >= 0:
-            torch.cuda.nvtx.range_pop()
+            torch.cuda.nvtx.range_pop()  # 弹出一个固定范围的堆栈,返回的堆栈范围深度从0结束.
         loss = criterion(output, target)
 
         # compute gradient and do SGD step
@@ -389,6 +396,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         if args.prof >= 0:
             torch.cuda.nvtx.range_push("optimizer.step()")
+            
         optimizer.step()
         if args.prof >= 0:
             torch.cuda.nvtx.range_pop()
