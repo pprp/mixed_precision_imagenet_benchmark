@@ -15,7 +15,13 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
+from logger import TensorboardLogger
+
 import numpy as np
+
+writer = TensorboardLogger()
+global_step1 = 0
+global_step2 = 0
 
 try:
     from apex.parallel import DistributedDataParallel as DDP
@@ -23,7 +29,9 @@ try:
     from apex import amp, optimizers
     from apex.multi_tensor_apply import multi_tensor_applier
 except ImportError:
-    raise ImportError("Please install apex from https://www.github.com/nvidia/apex to run this example.")
+    raise ImportError(
+        "Please install apex from https://www.github.com/nvidia/apex to run this example.")
+
 
 def fast_collate(batch, memory_format):
 
@@ -31,7 +39,8 @@ def fast_collate(batch, memory_format):
     targets = torch.tensor([target[1] for target in batch], dtype=torch.int64)
     w = imgs[0].size[0]
     h = imgs[0].size[1]
-    tensor = torch.zeros( (len(imgs), 3, h, w), dtype=torch.uint8).contiguous(memory_format=memory_format)
+    tensor = torch.zeros((len(imgs), 3, h, w), dtype=torch.uint8).contiguous(
+        memory_format=memory_format)
     for i, img in enumerate(imgs):
         nump_array = np.asarray(img, dtype=np.uint8)
         if(nump_array.ndim < 3):
@@ -43,8 +52,8 @@ def fast_collate(batch, memory_format):
 
 def parse():
     model_names = sorted(name for name in models.__dict__
-                     if name.islower() and not name.startswith("__")
-                     and callable(models.__dict__[name]))
+                         if name.islower() and not name.startswith("__")
+                         and callable(models.__dict__[name]))
 
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('data', metavar='DIR',
@@ -92,12 +101,15 @@ def parse():
     args = parser.parse_args()
     return args
 
+
 def main():
+
     global best_prec1, args
 
     args = parse()
     print("opt_level = {}".format(args.opt_level))
-    print("keep_batchnorm_fp32 = {}".format(args.keep_batchnorm_fp32), type(args.keep_batchnorm_fp32))
+    print("keep_batchnorm_fp32 = {}".format(
+        args.keep_batchnorm_fp32), type(args.keep_batchnorm_fp32))
     print("loss_scale = {}".format(args.loss_scale), type(args.loss_scale))
 
     print("\nCUDNN VERSION: {}\n".format(torch.backends.cudnn.version()))
@@ -180,7 +192,8 @@ def main():
         def resume():
             if os.path.isfile(args.resume):
                 print("=> loading checkpoint '{}'".format(args.resume))
-                checkpoint = torch.load(args.resume, map_location = lambda storage, loc: storage.cuda(args.gpu))
+                checkpoint = torch.load(
+                    args.resume, map_location=lambda storage, loc: storage.cuda(args.gpu))
                 args.start_epoch = checkpoint['epoch']
                 global best_prec1
                 best_prec1 = checkpoint['best_prec1']
@@ -197,7 +210,8 @@ def main():
     valdir = os.path.join(args.data, 'val')
 
     if(args.arch == "inception_v3"):
-        raise RuntimeError("Currently, inception_v3 is not supported by this example.")
+        raise RuntimeError(
+            "Currently, inception_v3 is not supported by this example.")
         # crop_size = 299
         # val_size = 320 # I chose this value arbitrarily, we can adjust.
     else:
@@ -213,20 +227,23 @@ def main():
             # normalize,
         ]))
     val_dataset = datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize(val_size),
-            transforms.CenterCrop(crop_size),
-        ]))
+        transforms.Resize(val_size),
+        transforms.CenterCrop(crop_size),
+    ]))
 
     train_sampler = None
     val_sampler = None
     if args.distributed:
-        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-        val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset)
+        train_sampler = torch.utils.data.distributed.DistributedSampler(
+            train_dataset)
+        val_sampler = torch.utils.data.distributed.DistributedSampler(
+            val_dataset)
 
-    collate_fn = lambda b: fast_collate(b, memory_format)
+    def collate_fn(b): return fast_collate(b, memory_format)
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        train_dataset, batch_size=args.batch_size, shuffle=(
+            train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, collate_fn=collate_fn)
 
     val_loader = torch.utils.data.DataLoader(
@@ -259,15 +276,18 @@ def main():
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'best_prec1': best_prec1,
-                'optimizer' : optimizer.state_dict(),
+                'optimizer': optimizer.state_dict(),
             }, is_best)
+
 
 class data_prefetcher():
     def __init__(self, loader):
         self.loader = iter(loader)
         self.stream = torch.cuda.Stream()
-        self.mean = torch.tensor([0.485 * 255, 0.456 * 255, 0.406 * 255]).cuda().view(1,3,1,1)
-        self.std = torch.tensor([0.229 * 255, 0.224 * 255, 0.225 * 255]).cuda().view(1,3,1,1)
+        self.mean = torch.tensor(
+            [0.485 * 255, 0.456 * 255, 0.406 * 255]).cuda().view(1, 3, 1, 1)
+        self.std = torch.tensor(
+            [0.229 * 255, 0.224 * 255, 0.225 * 255]).cuda().view(1, 3, 1, 1)
         # With Amp, it isn't necessary to manually convert data to half.
         # if args.fp16:
         #     self.mean = self.mean.half()
@@ -318,6 +338,8 @@ class data_prefetcher():
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
+    global global_step1
+
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -332,36 +354,46 @@ def train(train_loader, model, criterion, optimizer, epoch):
     i = 0
     while input is not None:
         i += 1
+
+        global_step1 += 1
+
         if args.prof >= 0 and i == args.prof:
             print("Profiling begun at iteration {}".format(i))
             torch.cuda.cudart().cudaProfilerStart()
 
-        if args.prof >= 0: torch.cuda.nvtx.range_push("Body of iteration {}".format(i))
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_push("Body of iteration {}".format(i))
 
         adjust_learning_rate(optimizer, epoch, i, len(train_loader))
 
         # compute output
-        if args.prof >= 0: torch.cuda.nvtx.range_push("forward")
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_push("forward")
         output = model(input)
-        if args.prof >= 0: torch.cuda.nvtx.range_pop()
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_pop()
         loss = criterion(output, target)
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
 
-        if args.prof >= 0: torch.cuda.nvtx.range_push("backward")
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_push("backward")
         with amp.scale_loss(loss, optimizer) as scaled_loss:
             scaled_loss.backward()
-        if args.prof >= 0: torch.cuda.nvtx.range_pop()
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_pop()
 
         # for param in model.parameters():
         #     print(param.data.double().sum().item(), param.grad.data.double().sum().item())
 
-        if args.prof >= 0: torch.cuda.nvtx.range_push("optimizer.step()")
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_push("optimizer.step()")
         optimizer.step()
-        if args.prof >= 0: torch.cuda.nvtx.range_pop()
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_pop()
 
-        if i%args.print_freq == 0:
+        if i % args.print_freq == 0:
             # Every print_freq iterations, check the loss, accuracy, and speed.
             # For best performance, it doesn't make sense to print these metrics every
             # iteration, since they incur an allreduce and some host<->device syncs.
@@ -382,6 +414,10 @@ def train(train_loader, model, criterion, optimizer, epoch):
             top1.update(to_python_float(prec1), input.size(0))
             top5.update(to_python_float(prec5), input.size(0))
 
+            writer.add_scalar('train', 'acc1', prec1[0], global_step1)
+            writer.add_scalar('train', 'acc5', prec5[0], global_step1)
+            writer.add_scalar('train', 'loss', loss.item(), global_step1)
+
             torch.cuda.synchronize()
             batch_time.update((time.time() - end)/args.print_freq)
             end = time.time()
@@ -393,17 +429,22 @@ def train(train_loader, model, criterion, optimizer, epoch):
                       'Loss {loss.val:.10f} ({loss.avg:.4f})\t'
                       'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                       'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                       epoch, i, len(train_loader),
-                       args.world_size*args.batch_size/batch_time.val,
-                       args.world_size*args.batch_size/batch_time.avg,
-                       batch_time=batch_time,
-                       loss=losses, top1=top1, top5=top5))
-        if args.prof >= 0: torch.cuda.nvtx.range_push("prefetcher.next()")
+                          epoch, i, len(train_loader),
+                          args.world_size*args.batch_size/batch_time.val,
+                          args.world_size*args.batch_size/batch_time.avg,
+                          batch_time=batch_time,
+                          loss=losses, top1=top1, top5=top5))
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_push("prefetcher.next()")
+
         input, target = prefetcher.next()
-        if args.prof >= 0: torch.cuda.nvtx.range_pop()
+
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_pop()
 
         # Pop range "Body of iteration {}".format(i)
-        if args.prof >= 0: torch.cuda.nvtx.range_pop()
+        if args.prof >= 0:
+            torch.cuda.nvtx.range_pop()
 
         if args.prof >= 0 and i == args.prof + 10:
             print("Profiling ended at iteration {}".format(i))
@@ -412,6 +453,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
 
 def validate(val_loader, model, criterion):
+
+    global global_step2
+
     batch_time = AverageMeter()
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -447,6 +491,10 @@ def validate(val_loader, model, criterion):
         top1.update(to_python_float(prec1), input.size(0))
         top5.update(to_python_float(prec5), input.size(0))
 
+        writer.add_scalar('val', 'acc1', prec1[0], global_step2)
+        writer.add_scalar('val', 'acc5', prec5[0], global_step2)
+        writer.add_scalar('val', 'loss', loss.item(), global_step2)
+
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
@@ -459,11 +507,11 @@ def validate(val_loader, model, criterion):
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                   'Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t'
                   'Prec@5 {top5.val:.3f} ({top5.avg:.3f})'.format(
-                   i, len(val_loader),
-                   args.world_size * args.batch_size / batch_time.val,
-                   args.world_size * args.batch_size / batch_time.avg,
-                   batch_time=batch_time, loss=losses,
-                   top1=top1, top5=top5))
+                      i, len(val_loader),
+                      args.world_size * args.batch_size / batch_time.val,
+                      args.world_size * args.batch_size / batch_time.avg,
+                      batch_time=batch_time, loss=losses,
+                      top1=top1, top5=top5))
 
         input, target = prefetcher.next()
 
@@ -481,6 +529,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
+
     def __init__(self):
         self.reset()
 
@@ -538,6 +587,7 @@ def reduce_tensor(tensor):
     dist.all_reduce(rt, op=dist.reduce_op.SUM)
     rt /= args.world_size
     return rt
+
 
 if __name__ == '__main__':
     main()
